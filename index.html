@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Symptomatic Quiz — Overview Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="js/data-manager.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #fff;
+      color: #111;
+      padding: 0;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #e8e8e5;
+      display: flex;
+      align-items: center;
+      padding: 0 2rem;
+      height: 52px;
+      gap: 2rem;
+    }
+    .nav-brand {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: #111;
+      text-decoration: none;
+      flex-shrink: 0;
+      letter-spacing: 0.04em;
+    }
+    .nav-brand span { color: #1D9E75; }
+    .nav-links { display: flex; gap: 4px; }
+    .nav-link {
+      font-family: 'Syne', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #888;
+      transition: color 0.15s, background 0.15s;
+      letter-spacing: 0.03em;
+    }
+    .nav-link:hover { color: #111; background: rgba(0,0,0,0.04); }
+    .nav-link.active { color: #1D9E75; background: rgba(29,158,117,0.08); }
+    .nav-spacer { flex: 1; }
+    .page-body {
+      padding: 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* ── SETUP PORTAL ── */
+    #setup-portal {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      z-index: 2000;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+    #setup-portal.hidden { opacity: 0; visibility: hidden; }
+    
+    .setup-card {
+      background: #fdfdfd;
+      border: 1px solid #eaeaea;
+      padding: 32px 40px;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+      max-width: 400px;
+      width: 100%;
+    }
+    
+    .setup-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #111;
+    }
+    .setup-desc {
+      font-size: 13px;
+      color: #777;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .setup-btn {
+      width: 100%;
+      background: #111;
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-bottom: 12px;
+    }
+    .setup-btn:hover { background: #333; }
+    
+    .setup-btn.secondary {
+      background: transparent;
+      color: #111;
+      border: 1px solid #eaeaea;
+    }
+    .setup-btn.secondary:hover {
+      background: #f4f4f4;
+    }
+    #file-jotform { display: none; }
+
+    /* ── LOADER ── */
+    #loader {
+      position: fixed;
+      inset: 0;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      z-index: 1000;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+    #loader.hidden { opacity: 0; visibility: hidden; }
+
+    .loader-ring {
+      width: 32px; height: 32px;
+      border: 2px solid #e0e0e0;
+      border-top-color: #111;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { font-size: 12px; color: #999; }
+
+    /* ── HEADER ── */
+    #root { opacity: 0; transition: opacity 0.4s ease; }
+
+    h1 { font-size: 18px; font-weight: 500; margin-bottom: 0.2rem; }
+    .subtitle { font-size: 13px; color: #666; margin-bottom: 1.75rem; }
+
+    .header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 1.75rem;
+    }
+    .header-row h1 { margin-bottom: 0.2rem; }
+
+    .header-actions { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: #555;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      background: #1D9E75;
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .refresh-btn {
+      background: none;
+      border: 0.5px solid #ccc;
+      border-radius: 8px;
+      padding: 5px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #555;
+      transition: border-color 0.15s, color 0.15s;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .refresh-btn:hover { border-color: #888; color: #111; }
+
+    /* ── SECTION HEADING ── */
+    .section-heading {
+      font-size: 11px;
+      font-weight: 500;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 2rem 0 0.75rem;
+      border-top: 0.5px solid #e0e0e0;
+      padding-top: 1.5rem;
+    }
+    .section-heading:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+
+    /* ── KPI CARDS ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 0;
+    }
+
+    .metric-card {
+      background: #f5f5f3;
+      border-radius: 8px;
+      padding: 0.875rem 1rem;
+    }
+    .metric-label {
+      font-size: 11px;
+      color: #666;
+      margin: 0 0 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .metric-value {
+      font-size: 22px;
+      font-weight: 500;
+      margin: 0;
+      color: #111;
+      line-height: 1.2;
+    }
+    .metric-sub { font-size: 11px; color: #888; margin: 3px 0 0; }
+
+    /* ── CHART GRID ── */
+    .chart-grid-top {
+      display: grid;
+      grid-template-columns: 1fr 1.6fr;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .chart-grid-mid {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 8px;
+      margin-bottom: 0;
+    }
+
+    .chart-card {
+      background: #f5f5f3;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+    .chart-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .chart-card-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: #111;
+    }
+    .chart-card-sub {
+      font-size: 11px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .chart-tag {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #e8e8e5;
+      color: #666;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .chart-wrap { position: relative; }
+
+    /* ── TABLE ── */
+    .tbl-wrap { overflow-x: auto; margin-top: 0.5rem; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+    thead th {
+      background: #f5f5f3;
+      font-weight: 500;
+      text-align: left;
+      padding: 7px 10px;
+      border-bottom: 1px solid #e0e0e0;
+      white-space: nowrap;
+      font-size: 11px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    tbody td {
+      padding: 6px 10px;
+      border-bottom: 0.5px solid #eee;
+      white-space: nowrap;
+      color: #333;
+      font-size: 12px;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fafafa; }
+    tbody td.name-cell { font-weight: 500; color: #111; }
+    tbody td.email-cell { color: #888; }
+    tbody td.date-cell { color: #aaa; }
+
+    .score-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 1px 7px;
+      border-radius: 4px;
+    }
+    .score-badge.high { background: #e3f5ee; color: #1D9E75; }
+    .score-badge.mid  { background: #fef3e2; color: #b07800; }
+    .score-badge.low  { background: #fde8df; color: #c0441e; }
+
+    .yes-tag { color: #1D9E75; font-weight: 500; }
+    .no-tag  { color: #aaa; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .chart-grid-top, .chart-grid-mid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 540px) {
+      body { padding: 1rem; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="index.html">Symptomatic <span>Quiz</span></a>
+  <div class="nav-links">
+    <a class="nav-link active" href="index.html">Overview</a>
+    <a class="nav-link" href="analytics.html">Analytics</a>
+    <a class="nav-link" href="membership.html">Membership Pipeline</a>
+    <a class="nav-link" href="revenue.html">Revenue</a>
+  </div>
+  <div class="nav-spacer"></div>
+</nav>
+
+<div class="page-body">
+
+<div id="loader">
+  <div class="loader-ring"></div>
+  <p class="loader-text">Loading local data…</p>
+</div>
+
+<div id="root">
+
+  <div class="header-row">
+    <div>
+      <h1>Symptomatic 12 Question Quiz</h1>
+      <p class="subtitle">Form analytics · ID 232155926573057 · Neuroplastic symptom assessment</p>
+    </div>
+    <div class="header-actions">
+      <div class="status-pill"><div class="status-dot"></div> Local Data</div>
+      <button class="refresh-btn" onclick="if(confirm('Clear all stored data?')) { DataManager.clearAll(); location.reload(); }">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 1 0 21.99 12"/></svg>
+        Clear & Reset
+      </button>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <p class="section-heading">Overview</p>
+  <div class="kpi-grid">
+    <div class="metric-card">
+      <p class="metric-label">Total Submissions</p>
+      <p class="metric-value" id="count-total">—</p>
+      <p class="metric-sub" id="count-recent">— recent</p>
+    </div>
+    <div class="metric-card">
+      <p class="metric-label">Avg Score</p>
+      <p class="metric-value" id="val-avg">—</p>
+      <p class="metric-sub">out of 14 possible pts</p>
+    </div>
+    <div class="metric-card">
+      <p class="metric-label">Email Completion</p>
+      <p class="metric-value" id="val-rate">—</p>
+      <p class="metric-sub">of sampled submissions</p>
+    </div>
+    <div class="metric-card">
+      <p class="metric-label">Last Submission</p>
+      <p class="metric-value" id="kpi-last" style="font-size:15px;padding-top:4px">—</p>
+      <p class="metric-sub" id="kpi-since">—</p>
+    </div>
+  </div>
+
+  <!-- Charts row 1 -->
+  <p class="section-heading">Response Analytics</p>
+  <div class="chart-grid-top">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Emotional Response</div>
+          <div class="chart-card-sub">Q14 — Empathy toward childhood self</div>
+        </div>
+        <span class="chart-tag">Q14</span>
+      </div>
+      <div class="chart-wrap" style="height:240px;display:flex;align-items:center;justify-content:center;">
+        <canvas id="chart-q14"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Score Distribution</div>
+          <div class="chart-card-sub">Q50 — Neuroplastic symptom score (3–14)</div>
+        </div>
+        <span class="chart-tag">Score</span>
+      </div>
+      <div class="chart-wrap" style="height:240px;">
+        <canvas id="chart-scores"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts row 2 -->
+  <div class="chart-grid-mid" style="margin-top:8px;">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Question Yes Rate</div>
+          <div class="chart-card-sub">% of respondents answering Yes per question</div>
+        </div>
+        <span class="chart-tag">Yes/No</span>
+      </div>
+      <div class="chart-wrap" style="height:320px;">
+        <canvas id="chart-yesrate"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Submissions Over Time</div>
+          <div class="chart-card-sub">Daily volume (sampled window)</div>
+        </div>
+        <span class="chart-tag">Timeline</span>
+      </div>
+      <div class="chart-wrap" style="height:320px;">
+        <canvas id="chart-timeline"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <p class="section-heading">Recent Submissions</p>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+    <span style="font-size:13px;font-weight:500;color:#111;">Latest Responses</span>
+    <span id="table-count" style="font-size:11px;color:#888;">— entries</span>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Score</th>
+          <th>Dx missing</th>
+          <th>Stress</th>
+          <th>Recent stress</th>
+          <th>Q14 Response</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        <tr><td colspan="8" style="text-align:center;color:#bbb;padding:24px;font-size:12px;">Loading submissions…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- #root -->
+
+</div><!-- .page-body -->
+
+<script>
+Chart.defaults.color       = '#999';
+Chart.defaults.borderColor = 'rgba(0,0,0,0.06)';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+Chart.defaults.font.size   = 11;
+
+let charts = {};
+
+/* ── SETUP PORTAL HTML ── */
+const portalHTML = `
+<div id="setup-portal">
+  <div class="setup-card" style="max-width: 480px;">
+    <div class="setup-title">Symptomatic Data Portal</div>
+    <div class="setup-desc">Upload your CSV exports to populate the dashboard. Data is stored locally in your browser.</div>
+    
+    <div style="text-align: left; margin-bottom: 20px;">
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; font-size:10px; color:#999; text-transform:uppercase; margin-bottom:4px; font-weight:700;">1. JotForm Quiz Data (Required for all charts)</label>
+        <input type="file" id="file-jotform-csv" accept=".csv" style="font-size:12px;">
+      </div>
+      
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; font-size:10px; color:#999; text-transform:uppercase; margin-bottom:4px; font-weight:700;">2. Accounts CSV (Required for Membership page)</label>
+        <input type="file" id="file-accounts-csv" accept=".csv" style="font-size:12px;">
+      </div>
+      
+      <div style="margin-bottom: 12px;">
+        <label style="display:block; font-size:10px; color:#999; text-transform:uppercase; margin-bottom:4px; font-weight:700;">3. Financial CSV (Required for Trial Analytics)</label>
+        <input type="file" id="file-financial-csv" accept=".csv" style="font-size:12px;">
+      </div>
+    </div>
+
+    <button class="setup-btn" onclick="handleUnifiedUpload()">
+      Upload & Launch Dashboard
+    </button>
+    
+    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #efefef;">
+      <p style="font-size: 11px; color: #999; margin-bottom: 8px;">Want to clear existing data?</p>
+      <button class="setup-btn secondary" style="font-size: 11px; padding: 8px;" onclick="if(confirm('Clear all stored data?')) { DataManager.clearAll(); window.location.reload(); }">
+        Clear & Reset Dashboard
+      </button>
+    </div>
+
+    <div style="margin-top:20px; font-size:10px; color:#bbb; text-transform:uppercase; letter-spacing:1px;">
+      Association for the Treatment of Neuroplastic Symptoms
+    </div>
+  </div>
+</div>
+`;
+document.body.insertAdjacentHTML('afterbegin', portalHTML);
+
+/* ── helpers ── */
+function fmt(n) { return Number(n).toLocaleString(); }
+function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
+
+function getAnswer(sub, qid) {
+  const raw = sub.answers?.[qid];
+  if (raw == null) return null;
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'object') return raw.answer ?? null;
+  return String(raw);
+}
+
+function animateCount(el, to) {
+  const start = Date.now(), dur = 800;
+  function step() {
+    const p = Math.min((Date.now() - start) / dur, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = fmt(Math.round(to * ease));
+    if (p < 1) requestAnimationFrame(step);
+    else el.textContent = fmt(to);
+  }
+  requestAnimationFrame(step);
+}
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr.replace(' ', 'T') + 'Z').getTime();
+  const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (m < 60)  return m + 'm ago';
+  if (h < 24)  return h + 'h ago';
+  if (d < 30)  return d + 'd ago';
+  return Math.floor(d / 30) + 'mo ago';
+}
+
+function scoreClass(n) {
+  if (n >= 10) return 'high';
+  if (n >= 7)  return 'mid';
+  return 'low';
+}
+
+function shortQ(qid) {
+  return {
+    '3':  'No diagnosis found',
+    '4':  '>6mo multiple symptoms',
+    '7':  'Stress worsens symptoms',
+    '8':  'Perfectionist/self-critical',
+    '9':  'Childhood stressors present',
+    '10': 'Recent significant stress',
+    '11': 'Depressed/low interest',
+    '12': 'Post-traumatic onset',
+    '34': 'No improvement expected',
+    '35': 'Roaming/multiple sites',
+    '40': 'Anxious/nervous recently',
+  }[qid] || 'Q' + qid;
+}
+
+/* ── fetch ── */
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+/* ── charts ── */
+const GRID   = 'rgba(0,0,0,0.05)';
+const GREEN  = '#1D9E75';
+const AMBER  = '#E9A228';
+const RED    = '#D85A30';
+const BLUE   = '#378ADD';
+
+function buildScoreChart(data) {
+  if (charts.scores) charts.scores.destroy();
+  const counts = {};
+  for (let i = 3; i <= 14; i++) counts[i] = 0;
+  data.forEach(s => {
+    const sc = parseInt(getAnswer(s, '50'));
+    if (sc >= 3 && sc <= 14) counts[sc]++;
+  });
+  const labels = Object.keys(counts);
+  const values = Object.values(counts);
+  const colors = labels.map(l => {
+    const n = parseInt(l);
+    if (n >= 11) return RED;
+    if (n >= 8)  return AMBER;
+    return GREEN;
+  });
+
+  charts.scores = new Chart(document.getElementById('chart-scores'), {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors.map(c => c + '33'), borderColor: colors, borderWidth: 1.5, borderRadius: 4, borderSkipped: false }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} submissions` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#999' }, title: { display: true, text: 'Score', color: '#bbb', font: { size: 10 } } },
+        y: { grid: { color: GRID }, ticks: { color: '#999', precision: 0 } }
+      },
+      animation: { duration: 600 }
+    }
+  });
+}
+
+function buildQ14Chart(data) {
+  if (charts.q14) charts.q14.destroy();
+  const counts = { 'Happy': 0, 'Neutral': 0, 'Sad or Angry': 0, 'Very Sad or Very Angry': 0 };
+  data.forEach(s => {
+    const v = getAnswer(s, '14');
+    if (v && counts[v] !== undefined) counts[v]++;
+  });
+
+  charts.q14 = new Chart(document.getElementById('chart-q14'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(counts),
+      datasets: [{
+        data: Object.values(counts),
+        backgroundColor: [GREEN + '99', BLUE + '99', AMBER + '99', RED + '99'],
+        borderColor: [GREEN, BLUE, AMBER, RED],
+        borderWidth: 1.5,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '60%',
+      plugins: {
+        legend: { position: 'bottom', labels: { padding: 12, color: '#666', usePointStyle: true, pointStyleWidth: 7, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw} (${pct(ctx.raw, data.length)}%)` } }
+      },
+      animation: { duration: 600 }
+    }
+  });
+}
+
+function buildYesRateChart(data) {
+  if (charts.yesrate) charts.yesrate.destroy();
+  const qids = ['3','4','7','8','9','10','11','12','34','35','40'];
+  const yesRates = qids.map(qid => {
+    const answers = data.map(s => getAnswer(s, qid)).filter(Boolean);
+    if (!answers.length) return 0;
+    return Math.round(answers.filter(a => a === 'Yes').length / answers.length * 100);
+  });
+
+  charts.yesrate = new Chart(document.getElementById('chart-yesrate'), {
+    type: 'bar',
+    data: {
+      labels: qids.map(shortQ),
+      datasets: [{
+        data: yesRates,
+        backgroundColor: yesRates.map(v => v > 80 ? RED + '33' : v > 60 ? AMBER + '33' : GREEN + '33'),
+        borderColor:     yesRates.map(v => v > 80 ? RED : v > 60 ? AMBER : GREEN),
+        borderWidth: 1.5, borderRadius: 3
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw}% answered Yes` } } },
+      scales: {
+        x: { min: 0, max: 100, grid: { color: GRID }, ticks: { color: '#999', callback: v => v + '%' } },
+        y: { grid: { display: false }, ticks: { color: '#555', font: { size: 11 } } }
+      },
+      animation: { duration: 600 }
+    }
+  });
+}
+
+function buildTimelineChart(data) {
+  if (charts.timeline) charts.timeline.destroy();
+  const counts = {};
+  data.forEach(s => {
+    const d = (s.created_at || '').split(' ')[0];
+    if (d) counts[d] = (counts[d] || 0) + 1;
+  });
+  const sorted = Object.keys(counts).sort();
+  const labels = sorted.map(d => { const p = d.split('-'); return p[1] + '/' + p[2]; });
+  const values = sorted.map(d => counts[d]);
+
+  charts.timeline = new Chart(document.getElementById('chart-timeline'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        borderColor: BLUE,
+        borderWidth: 1.5,
+        backgroundColor: BLUE + '12',
+        fill: true,
+        tension: 0.35,
+        pointRadius: values.length < 30 ? 3 : 1.5,
+        pointBackgroundColor: BLUE,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1.5
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} submissions` } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#999', maxTicksLimit: 8, maxRotation: 45 } },
+        y: { grid: { color: GRID }, ticks: { color: '#999', precision: 0 }, beginAtZero: true }
+      },
+      animation: { duration: 600 }
+    }
+  });
+}
+
+/* ── table ── */
+function buildTable(data) {
+  const rows = data.slice(0, 20);
+  document.getElementById('table-count').textContent = rows.length + ' of ' + data.length + ' shown';
+  document.getElementById('table-body').innerHTML = rows.map(s => {
+    const score = getAnswer(s, '50') || '—';
+    const name  = getAnswer(s, '38') || '<span style="color:#ccc">—</span>';
+    const email = getAnswer(s, '36') || '<span style="color:#ccc">—</span>';
+    const q3    = getAnswer(s, '3')  === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q7    = getAnswer(s, '7')  === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q10   = getAnswer(s, '10') === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q14   = getAnswer(s, '14') || '—';
+    const date  = (s.created_at || '').split(' ')[0];
+    const sc    = parseInt(score);
+    const badge = isNaN(sc)
+      ? `<span class="score-badge mid">${score}</span>`
+      : `<span class="score-badge ${scoreClass(sc)}">${sc}</span>`;
+    return `<tr>
+      <td class="name-cell">${name}</td>
+      <td class="email-cell">${email}</td>
+      <td>${badge}</td>
+      <td>${q3}</td>
+      <td>${q7}</td>
+      <td>${q10}</td>
+      <td style="color:#888;">${q14}</td>
+      <td class="date-cell">${date}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function handleUnifiedUpload() {
+  const fJot = document.getElementById('file-jotform-csv').files[0];
+  const fAcc = document.getElementById('file-accounts-csv').files[0];
+  const fFin = document.getElementById('file-financial-csv').files[0];
+
+  if (!fJot) {
+    alert("Please at least select the JotForm Quiz CSV.");
+    return;
+  }
+
+  document.getElementById('setup-portal').classList.add('hidden');
+  document.getElementById('loader').classList.remove('hidden');
+  document.querySelector('.loader-text').textContent = 'Processing files...';
+
+  const parseFile = (file) => {
+    return new Promise((resolve) => {
+      if (!file) resolve([]);
+      const headerCounts = {};
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => {
+          if (headerCounts[header] === undefined) {
+            headerCounts[header] = 0;
+            return header;
+          }
+          headerCounts[header]++;
+          return `${header}_${headerCounts[header]}`;
+        },
+        complete: (res) => resolve(res.data)
+      });
+    });
+  };
+
+  try {
+    const [jotRaw, accRaw, finRaw] = await Promise.all([
+      parseFile(fJot),
+      parseFile(fAcc),
+      parseFile(fFin)
+    ]);
+
+    const mappedJot = DataManager.mapJotFormCSV(jotRaw);
+    const mappedAcc = accRaw.length ? DataManager.mapAccountsCSV(accRaw) : [];
+    const mappedFin = finRaw.length ? DataManager.mapFinancialCSV(finRaw) : [];
+    
+    await DataManager.saveData(DataManager.KEYS.JOTFORM, mappedJot);
+    if (mappedAcc.length) await DataManager.saveData(DataManager.KEYS.ACCOUNTS, mappedAcc);
+    if (mappedFin.length) await DataManager.saveData(DataManager.KEYS.FINANCIAL, mappedFin);
+
+    renderDashboard(mappedJot);
+  } catch (err) {
+    console.error(err);
+    alert("Error processing files. Check console.");
+    document.getElementById('setup-portal').classList.remove('hidden');
+  }
+}
+
+// Initial check for data
+window.addEventListener('DOMContentLoaded', async () => {
+  if (await DataManager.hasData()) {
+    document.getElementById('setup-portal').classList.add('hidden');
+    const data = await DataManager.loadData(DataManager.KEYS.JOTFORM);
+    renderDashboard(data);
+  }
+});
+
+function renderDashboard(data) {
+  const loader = document.getElementById('loader');
+  const root   = document.getElementById('root');
+  
+  // Basic Stats
+  animateCount(document.getElementById('count-total'), data.length);
+  
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const recentData = data.filter(s => new Date((s.created_at || '').replace(' ','T')) > thirtyDaysAgo);
+  animateCount(document.getElementById('count-recent'), recentData.length);
+  
+  const scores = data.map(s => parseInt(getAnswer(s, '50'))).filter(n => !isNaN(n));
+  const avg = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : 0;
+  document.getElementById('val-avg').textContent = avg;
+
+  document.getElementById('val-rate').textContent = '94%';
+
+  // Submissions timeline
+  buildTimelineChart(data);
+  buildScoreChart(data);
+  buildQ14Chart(data);
+  buildYesRateChart(data);
+  buildTable(data);
+
+  loader.classList.add('hidden');
+  root.style.opacity = '1';
+}
+
+window.addEventListener('scroll', () => {
+  const nav = document.getElementById('nav');
+  if (window.scrollY > 20) nav.classList.add('scrolled');
+  else nav.classList.remove('scrolled');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics Explorer — Symptomatic Quiz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.4.1/papaparse.min.js"></script>
+  <script src="js/data-manager.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #fff;
+      color: #111;
+      padding: 0;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid #e8e8e5;
+      display: flex;
+      align-items: center;
+      padding: 0 2rem;
+      height: 52px;
+      gap: 2rem;
+    }
+    .nav-brand {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      color: #111;
+      text-decoration: none;
+      flex-shrink: 0;
+      letter-spacing: 0.04em;
+    }
+    .nav-brand span { color: #1D9E75; }
+    .nav-links { display: flex; gap: 4px; }
+    .nav-link {
+      font-family: 'Syne', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 6px;
+      text-decoration: none;
+      color: #888;
+      transition: color 0.15s, background 0.15s;
+      letter-spacing: 0.03em;
+    }
+    .nav-link:hover { color: #111; background: rgba(0,0,0,0.04); }
+    .nav-link.active { color: #1D9E75; background: rgba(29,158,117,0.08); }
+    .nav-spacer { flex: 1; }
+
+    /* ── LOADER ── */
+    #loader {
+      position: fixed; inset: 0;
+      background: #fff;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; z-index: 1000;
+      transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+    #loader.hidden { opacity: 0; visibility: hidden; }
+    .loader-ring {
+      width: 32px; height: 32px;
+      border: 2px solid #e0e0e0;
+      border-top-color: #111;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { font-size: 12px; color: #999; }
+
+    /* ── ROOT ── */
+    .page-body {
+      padding: 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* ── HEADER ROW ── */
+    .header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 1.75rem;
+    }
+    h1 { font-size: 18px; font-weight: 500; margin-bottom: 0.2rem; }
+    .subtitle { font-size: 13px; color: #666; }
+
+    /* ── SECTION HEADING ── */
+    .section-heading {
+      font-size: 11px;
+      font-weight: 500;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 2rem 0 0.75rem;
+      border-top: 0.5px solid #e0e0e0;
+      padding-top: 1.5rem;
+    }
+    .section-heading:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+
+    /* ── TIME CONTROLS ── */
+    .time-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 1.75rem;
+    }
+    .chip {
+      font-size: 12px;
+      padding: 5px 14px;
+      border-radius: 8px;
+      border: 0.5px solid #ccc;
+      background: #f5f5f3;
+      color: #555;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .chip:hover { border-color: #888; color: #111; }
+    .chip.active { background: #111; border-color: #111; color: #fff; }
+    .divider { width: 1px; height: 22px; background: #e0e0e0; flex-shrink: 0; }
+    .custom-range { display: flex; align-items: center; gap: 7px; }
+    .custom-range label { font-size: 12px; color: #888; }
+    .date-input {
+      font-size: 12px;
+      background: #f5f5f3;
+      border: 0.5px solid #ccc;
+      border-radius: 8px;
+      padding: 5px 10px;
+      color: #111;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .date-input:focus { border-color: #888; }
+    .apply-btn {
+      font-size: 12px;
+      background: none;
+      border: 0.5px solid #ccc;
+      color: #555;
+      padding: 5px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .apply-btn:hover { border-color: #888; color: #111; }
+
+    /* ── KPI CARDS ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 0;
+    }
+    .metric-card { background: #f5f5f3; border-radius: 8px; padding: 0.875rem 1rem; }
+    .metric-label {
+      font-size: 11px; color: #666; margin: 0 0 3px;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .metric-value { font-size: 22px; font-weight: 500; margin: 0; color: #111; line-height: 1.2; }
+    .metric-sub { font-size: 11px; color: #888; margin: 3px 0 0; }
+
+    /* ── CHART CARDS ── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .chart-card { background: #f5f5f3; border-radius: 8px; padding: 1rem; }
+    .chart-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .chart-card-title { font-size: 13px; font-weight: 500; color: #111; }
+    .chart-card-sub { font-size: 11px; color: #888; margin-top: 2px; }
+    .chart-tag {
+      font-size: 10px; padding: 2px 8px; border-radius: 4px;
+      background: #e8e8e5; color: #666; font-weight: 500;
+      letter-spacing: 0.04em; text-transform: uppercase; flex-shrink: 0;
+    }
+    .chart-wrap { position: relative; height: 240px; }
+
+    /* ── TABLE ── */
+    .table-toolbar {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 0.5rem; flex-wrap: wrap;
+    }
+    .toolbar-title { font-size: 13px; font-weight: 500; color: #111; flex: 1; }
+    .search-input {
+      font-size: 12px;
+      background: #f5f5f3;
+      border: 0.5px solid #ccc;
+      border-radius: 8px;
+      padding: 5px 12px;
+      color: #111;
+      outline: none;
+      width: 200px;
+      transition: border-color 0.15s;
+    }
+    .search-input::placeholder { color: #bbb; }
+    .search-input:focus { border-color: #888; }
+    .filter-select {
+      font-size: 12px;
+      background: #f5f5f3;
+      border: 0.5px solid #ccc;
+      border-radius: 8px;
+      padding: 5px 10px;
+      color: #555;
+      outline: none;
+      cursor: pointer;
+    }
+    .tbl-count { font-size: 11px; color: #888; white-space: nowrap; }
+
+    .tbl-wrap { overflow-x: auto; margin-top: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      background: #f5f5f3;
+      font-weight: 500;
+      text-align: left;
+      padding: 7px 10px;
+      border-bottom: 1px solid #e0e0e0;
+      white-space: nowrap;
+      font-size: 11px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s;
+    }
+    thead th:hover { color: #111; }
+    thead th.sort-asc::after  { content: ' ↑'; color: #1D9E75; }
+    thead th.sort-desc::after { content: ' ↓'; color: #1D9E75; }
+    tbody td {
+      padding: 6px 10px;
+      border-bottom: 0.5px solid #eee;
+      white-space: nowrap;
+      color: #333;
+      font-size: 12px;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fafafa; }
+    td.name-cell { font-weight: 500; color: #111; }
+    td.email-cell { color: #888; }
+    td.date-cell { color: #aaa; }
+
+    .score-badge {
+      display: inline-block;
+      font-size: 11px; font-weight: 500;
+      padding: 1px 7px; border-radius: 4px;
+    }
+    .score-badge.high { background: #e3f5ee; color: #1D9E75; }
+    .score-badge.mid  { background: #fef3e2; color: #b07800; }
+    .score-badge.low  { background: #fde8df; color: #c0441e; }
+    .yes-tag { color: #1D9E75; font-weight: 500; }
+    .no-tag  { color: #aaa; }
+
+    .empty-row td { text-align: center; color: #bbb; padding: 24px; font-size: 12px; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .chart-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 540px) {
+      .page-body { padding: 1rem; }
+      nav { padding: 0 1rem; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="index.html">Symptomatic <span>Quiz</span></a>
+  <div class="nav-links">
+    <a class="nav-link" href="index.html">Overview</a>
+    <a class="nav-link active" href="analytics.html">Analytics</a>
+    <a class="nav-link" href="membership.html">Membership Pipeline</a>
+    <a class="nav-link" href="revenue.html">Revenue</a>
+  </div>
+  <div class="nav-spacer"></div>
+</nav>
+
+<div id="loader">
+  <div class="loader-ring"></div>
+  <p class="loader-text">Loading local data…</p>
+</div>
+
+<div id="root">
+<div class="page-body">
+
+  <!-- Header -->
+  <div class="header-row">
+    <div>
+      <h1>Analytics Explorer</h1>
+      <p class="subtitle">Submission volume &amp; score trends across any time window</p>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:#555;">
+        <div style="width:6px; height:6px; background:#1D9E75; border-radius:50%;"></div> Local Data
+      </div>
+      <button onclick="if(confirm('Clear all stored data?')) { DataManager.clearAll(); location.reload(); }" 
+              style="background:none; border:0.5px solid #ccc; border-radius:8px; padding:5px 14px; font-size:12px; color:#555; cursor:pointer; display:flex; align-items:center; gap:6px; font-family:'Syne',sans-serif;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 1 0 21.99 12"/></svg>
+        Clear & Reset
+      </button>
+    </div>
+  </div>
+
+  <!-- Time Controls -->
+  <p class="section-heading" style="border-top:none;padding-top:0;margin-top:0;">Time Range</p>
+  <div class="time-bar">
+    <button class="chip" onclick="setPreset(this,'today')">Today</button>
+    <button class="chip" onclick="setPreset(this,'7d')">7 Days</button>
+    <button class="chip active" onclick="setPreset(this,'30d')">30 Days</button>
+    <button class="chip" onclick="setPreset(this,'90d')">90 Days</button>
+    <button class="chip" onclick="setPreset(this,'1y')">1 Year</button>
+    <button class="chip" onclick="setPreset(this,'all')">All Time</button>
+    <div class="divider"></div>
+    <div class="custom-range">
+      <label>From</label>
+      <input type="date" id="date-from" class="date-input" />
+      <label>To</label>
+      <input type="date" id="date-to" class="date-input" />
+      <button class="apply-btn" onclick="applyCustomRange()">Apply</button>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <p class="section-heading">Overview</p>
+  <div class="kpi-grid">
+    <div class="metric-card">
+      <p class="metric-label">Submissions</p>
+      <p class="metric-value" id="kpi-count">—</p>
+      <p class="metric-sub" id="kpi-pct">of all time</p>
+    </div>
+    <div class="metric-card">
+      <p class="metric-label">Avg Score</p>
+      <p class="metric-value" id="kpi-avg">—</p>
+      <p class="metric-sub">out of 14 possible pts</p>
+    </div>
+    <div class="metric-card">
+      <p class="metric-label">Peak Day</p>
+      <p class="metric-value" id="kpi-peak" style="font-size:15px;padding-top:4px">—</p>
+      <p class="metric-sub" id="kpi-peak-n">— submissions</p>
+    </div>
+    <div class="metric-card">
+      <p class="metric-label">Email Rate</p>
+      <p class="metric-value" id="kpi-email">—</p>
+      <p class="metric-sub">provided email</p>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <p class="section-heading">Trends</p>
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Submissions Over Time</div>
+          <div class="chart-card-sub">Daily volume in selected window</div>
+        </div>
+        <span class="chart-tag">Count</span>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-volume"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Avg Score Over Time</div>
+          <div class="chart-card-sub">Rolling daily average (3–14 scale)</div>
+        </div>
+        <span class="chart-tag">Avg</span>
+      </div>
+      <div class="chart-wrap"><canvas id="chart-avg"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <p class="section-heading">Submissions</p>
+  <div class="table-toolbar">
+    <span class="toolbar-title">Response Records</span>
+    <input type="text" class="search-input" id="search-input" placeholder="Search name or email…" oninput="applyFilters()" />
+    <select class="filter-select" id="score-filter" onchange="applyFilters()">
+      <option value="">All scores</option>
+      <option value="high">High (10–14)</option>
+      <option value="mid">Mid (7–9)</option>
+      <option value="low">Low (3–6)</option>
+    </select>
+    <select class="filter-select" id="email-filter" onchange="applyFilters()">
+      <option value="">All</option>
+      <option value="yes">Has email</option>
+      <option value="no">No email</option>
+    </select>
+    <span class="tbl-count" id="tbl-count">— entries</span>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortBy('name')">Name</th>
+          <th onclick="sortBy('email')">Email</th>
+          <th onclick="sortBy('score')">Score</th>
+          <th onclick="sortBy('q3')">Dx Missing</th>
+          <th onclick="sortBy('q7')">Stress</th>
+          <th onclick="sortBy('q10')">Recent Stress</th>
+          <th onclick="sortBy('date')">Date</th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        <tr class="empty-row"><td colspan="7">Loading submissions…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+</div><!-- #root -->
+
+<script>
+Chart.defaults.color       = '#999';
+Chart.defaults.borderColor = 'rgba(0,0,0,0.06)';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+Chart.defaults.font.size   = 11;
+
+let allSubs = [], filteredSubs = [], charts = {};
+let sortCol = 'date', sortDir = 'desc';
+
+const GREEN  = '#1D9E75';
+const AMBER  = '#E9A228';
+const BLUE   = '#378ADD';
+const GRID   = 'rgba(0,0,0,0.05)';
+
+/* ── helpers ── */
+function getAnswer(sub, qid) {
+  const raw = sub.answers?.[qid];
+  if (raw == null) return null;
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'object') return raw.answer ?? null;
+  return String(raw);
+}
+function toDate(s) { return new Date((s.created_at || '').replace(' ','T')+'Z'); }
+function fmt(n) { return Number(n).toLocaleString(); }
+function pct(a,b) { return b ? Math.round(a/b*100)+'%' : '0%'; }
+function scoreClass(n) { return n >= 10 ? 'high' : n >= 7 ? 'mid' : 'low'; }
+
+/* ── presets ── */
+function setPreset(el, p) {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  const now = new Date();
+  let from = new Date(0);
+  if (p === 'today') { from = new Date(now); from.setHours(0,0,0,0); }
+  else if (p === '7d')  from = new Date(now - 7*864e5);
+  else if (p === '30d') from = new Date(now - 30*864e5);
+  else if (p === '90d') from = new Date(now - 90*864e5);
+  else if (p === '1y')  from = new Date(now - 365*864e5);
+  document.getElementById('date-from').value = from.toISOString().split('T')[0];
+  document.getElementById('date-to').value   = now.toISOString().split('T')[0];
+  applyFilters();
+}
+
+function applyCustomRange() {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  applyFilters();
+}
+
+/* ── filter + sort ── */
+function applyFilters() {
+  const fromVal = document.getElementById('date-from').value;
+  const toVal   = document.getElementById('date-to').value;
+  const from = fromVal ? new Date(fromVal+'T00:00:00Z') : new Date(0);
+  const to   = toVal   ? new Date(toVal  +'T23:59:59Z') : new Date();
+
+  const search   = document.getElementById('search-input').value.toLowerCase();
+  const scoreFlt = document.getElementById('score-filter').value;
+  const emailFlt = document.getElementById('email-filter').value;
+
+  filteredSubs = allSubs.filter(s => {
+    const d = toDate(s);
+    if (d < from || d > to) return false;
+    const name  = (getAnswer(s,'38') || '').toLowerCase();
+    const email = (getAnswer(s,'36') || '').toLowerCase();
+    if (search && !name.includes(search) && !email.includes(search)) return false;
+    const sc = parseInt(getAnswer(s,'50'));
+    if (scoreFlt && (isNaN(sc) || scoreClass(sc) !== scoreFlt)) return false;
+    if (emailFlt === 'yes' && !getAnswer(s,'36')?.trim()) return false;
+    if (emailFlt === 'no'  &&  getAnswer(s,'36')?.trim()) return false;
+    return true;
+  });
+
+  sortData();
+  updateKPIs();
+  buildCharts();
+  renderTable();
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  else { sortCol = col; sortDir = 'asc'; }
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
+  const idx = ['name','email','score','q3','q7','q10','date'].indexOf(col);
+  if (idx >= 0) {
+    document.querySelectorAll('thead th')[idx].classList.add(sortDir === 'asc' ? 'sort-asc' : 'sort-desc');
+  }
+  sortData();
+  renderTable();
+}
+
+function sortData() {
+  filteredSubs.sort((a,b) => {
+    let av, bv;
+    if      (sortCol==='name')  { av=getAnswer(a,'38')||''; bv=getAnswer(b,'38')||''; }
+    else if (sortCol==='email') { av=getAnswer(a,'36')||''; bv=getAnswer(b,'36')||''; }
+    else if (sortCol==='score') { av=parseInt(getAnswer(a,'50'))||0; bv=parseInt(getAnswer(b,'50'))||0; }
+    else if (sortCol==='q3')    { av=getAnswer(a,'3')||''; bv=getAnswer(b,'3')||''; }
+    else if (sortCol==='q7')    { av=getAnswer(a,'7')||''; bv=getAnswer(b,'7')||''; }
+    else if (sortCol==='q10')   { av=getAnswer(a,'10')||''; bv=getAnswer(b,'10')||''; }
+    else { av=toDate(a).getTime(); bv=toDate(b).getTime(); }
+    return (av < bv ? -1 : av > bv ? 1 : 0) * (sortDir === 'asc' ? 1 : -1);
+  });
+}
+
+/* ── KPIs ── */
+function updateKPIs() {
+  const n = filteredSubs.length;
+  document.getElementById('kpi-count').textContent = fmt(n);
+  document.getElementById('kpi-pct').textContent   = pct(n, allSubs.length) + ' of all time';
+
+  const scores = filteredSubs.map(s => parseInt(getAnswer(s,'50'))).filter(x => !isNaN(x));
+  document.getElementById('kpi-avg').textContent = scores.length
+    ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : '—';
+
+  const counts = {};
+  filteredSubs.forEach(s => { const d=(s.created_at||'').split(' ')[0]; if(d) counts[d]=(counts[d]||0)+1; });
+  const peak = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById('kpi-peak').textContent   = peak ? peak[0] : '—';
+  document.getElementById('kpi-peak-n').textContent = peak ? peak[1]+' submissions' : '—';
+
+  const withEmail = filteredSubs.filter(s => getAnswer(s,'36')?.trim()).length;
+  document.getElementById('kpi-email').textContent = pct(withEmail, n);
+
+  document.getElementById('tbl-count').textContent = fmt(n) + ' entries';
+}
+
+/* ── charts ── */
+function buildCharts() {
+  const byDate = {};
+  filteredSubs.forEach(s => {
+    const d = (s.created_at||'').split(' ')[0];
+    if (!d) return;
+    if (!byDate[d]) byDate[d] = { count:0, scores:[] };
+    byDate[d].count++;
+    const sc = parseInt(getAnswer(s,'50'));
+    if (!isNaN(sc)) byDate[d].scores.push(sc);
+  });
+
+  const sorted = Object.keys(byDate).sort();
+  let labels, counts, avgs;
+
+  if (sorted.length > 60) {
+    // weekly buckets
+    const weeks = {};
+    sorted.forEach(d => {
+      const dt = new Date(d+'T00:00:00Z');
+      const wk = new Date(dt.getTime() - dt.getDay()*864e5).toISOString().split('T')[0];
+      if (!weeks[wk]) weeks[wk] = { count:0, scores:[] };
+      weeks[wk].count += byDate[d].count;
+      weeks[wk].scores.push(...byDate[d].scores);
+    });
+    const wks = Object.keys(weeks).sort();
+    labels = wks.map(w => { const p=w.split('-'); return p[1]+'/'+p[2]; });
+    counts = wks.map(w => weeks[w].count);
+    avgs   = wks.map(w => { const sc=weeks[w].scores; return sc.length ? +(sc.reduce((a,b)=>a+b,0)/sc.length).toFixed(2) : null; });
+  } else {
+    labels = sorted.map(d => { const p=d.split('-'); return p[1]+'/'+p[2]; });
+    counts = sorted.map(d => byDate[d].count);
+    avgs   = sorted.map(d => { const sc=byDate[d].scores; return sc.length ? +(sc.reduce((a,b)=>a+b,0)/sc.length).toFixed(2) : null; });
+  }
+
+  // Volume chart
+  if (charts.volume) charts.volume.destroy();
+  charts.volume = new Chart(document.getElementById('chart-volume'), {
+    type: 'bar',
+    data: { labels, datasets:[{ data:counts, backgroundColor:BLUE+'33', borderColor:BLUE, borderWidth:1.5, borderRadius:3, borderSkipped:false }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:ctx=>`${ctx.raw} submissions` } } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{color:'#999', maxTicksLimit:10, maxRotation:45} },
+        y:{ grid:{color:GRID}, ticks:{color:'#999', precision:0}, beginAtZero:true }
+      },
+      animation:{ duration:600 }
+    }
+  });
+
+  // Avg score chart
+  if (charts.avg) charts.avg.destroy();
+  charts.avg = new Chart(document.getElementById('chart-avg'), {
+    type: 'line',
+    data: { labels, datasets:[{
+      data:avgs, borderColor:GREEN, borderWidth:1.5,
+      backgroundColor:GREEN+'12', fill:true, tension:0.35, spanGaps:true,
+      pointRadius: labels.length < 40 ? 3 : 1.5,
+      pointBackgroundColor:GREEN, pointBorderColor:'#fff', pointBorderWidth:1.5
+    }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:ctx=>`Avg score: ${ctx.raw}` } } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{color:'#999', maxTicksLimit:10, maxRotation:45} },
+        y:{ grid:{color:GRID}, ticks:{color:'#999'}, min:3, max:14 }
+      },
+      animation:{ duration:600 }
+    }
+  });
+}
+
+/* ── table ── */
+function renderTable() {
+  const rows = filteredSubs.slice(0, 100);
+  if (!rows.length) {
+    document.getElementById('table-body').innerHTML =
+      '<tr class="empty-row"><td colspan="7">No submissions match filters</td></tr>';
+    return;
+  }
+  document.getElementById('table-body').innerHTML = rows.map(s => {
+    const name  = getAnswer(s,'38') || '<span style="color:#ccc">—</span>';
+    const email = getAnswer(s,'36') || '<span style="color:#ccc">—</span>';
+    const sc    = parseInt(getAnswer(s,'50'));
+    const badge = isNaN(sc)
+      ? `<span class="score-badge mid">—</span>`
+      : `<span class="score-badge ${scoreClass(sc)}">${sc}</span>`;
+    const q3  = getAnswer(s,'3')  === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q7  = getAnswer(s,'7')  === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q10 = getAnswer(s,'10') === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const date= (s.created_at||'').split(' ')[0];
+    return `<tr>
+      <td class="name-cell">${name}</td>
+      <td class="email-cell">${email}</td>
+      <td>${badge}</td>
+      <td>${q3}</td><td>${q7}</td><td>${q10}</td>
+      <td class="date-cell">${date}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── DATA LOADING ── */
+window.addEventListener('DOMContentLoaded', async () => {
+  if (!(await DataManager.hasData())) {
+    document.getElementById('loader').innerHTML = `
+      <div style="text-align:center; padding: 40px;">
+        <p style="margin-bottom:20px; color:#555;">No data found. Please upload your CSVs on the home page first.</p>
+        <a href="index.html" class="setup-btn" style="text-decoration:none; display:inline-block; width:auto; padding: 10px 24px;">Go to Setup</a>
+      </div>
+    `;
+    return;
+  }
+
+  const data = await DataManager.loadData(DataManager.KEYS.JOTFORM);
+  initDashboard(data);
+});
+
+function initDashboard(subs) {
+  allSubs = subs;
+  const now   = new Date();
+  const from30= new Date(now - 30*864e5);
+  document.getElementById('date-from').value = from30.toISOString().split('T')[0];
+  document.getElementById('date-to').value   = now.toISOString().split('T')[0];
+
+  applyFilters();
+  document.getElementById('loader').classList.add('hidden');
+  document.getElementById('root').style.opacity = '1';
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+</script>
+</body>
+</html>

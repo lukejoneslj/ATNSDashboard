@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Revenue Analysis — Symptomatic Dashboard</title>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="js/data-manager.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #fff; color: #111;
+    }
+    nav, .nav-brand, .nav-link, h1, .section-heading, .chart-card-title, .metric-label {
+      font-family: 'Syne', sans-serif !important;
+    }
+    table, .loader-text, .metric-value, .chart-tag, .badge, .assumption-val {
+      font-family: 'DM Mono', monospace;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(255,255,255,0.9); backdrop-filter: blur(12px);
+      border-bottom: 1px solid #e8e8e5;
+      display: flex; align-items: center; padding: 0 2rem;
+      height: 52px; gap: 2rem;
+    }
+    .nav-brand { font-size: 13px; font-weight: 600; color: #111; text-decoration: none; letter-spacing: 0.04em; }
+    .nav-brand span { color: #1D9E75; }
+    .nav-links { display: flex; gap: 4px; }
+    .nav-link { font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 6px; text-decoration: none; color: #888; transition: color 0.15s, background 0.15s; letter-spacing: 0.03em; }
+    .nav-link:hover { color: #111; background: rgba(0,0,0,0.04); }
+    .nav-link.active { color: #1D9E75; background: rgba(29,158,117,0.08); }
+    .nav-spacer { flex: 1; }
+    
+    .page-body { padding: 2rem; max-width: 1200px; margin: 0 auto; }
+
+    /* ── LOADER ── */
+    #loader {
+      position: fixed; inset: 0; background: #fff;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px; z-index: 1000; transition: opacity 0.4s ease, visibility 0.4s ease;
+    }
+    #loader.hidden { opacity: 0; visibility: hidden; }
+    .loader-ring { width: 32px; height: 32px; border: 2px solid #e0e0e0; border-top-color: #111; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader-text { font-size: 12px; color: #999; }
+
+    /* ── HEADER ── */
+    #root { opacity: 0; transition: opacity 0.4s ease; }
+    h1 { font-size: 18px; font-weight: 500; margin-bottom: 0.2rem; }
+    .subtitle { font-size: 13px; color: #666; margin-bottom: 2rem; }
+
+    /* ── SECTION HEADING ── */
+    .section-heading {
+      font-size: 11px; font-weight: 500; color: #888;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin: 3rem 0 1rem; border-top: 0.5px solid #e0e0e0; padding-top: 1.5rem;
+    }
+    .section-heading:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+
+    /* ── KPI CARDS ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+    .metric-card { background: #f5f5f3; border-radius: 12px; padding: 1.25rem; border: 1px solid transparent; transition: border-color 0.2s; }
+    .metric-card.highlight { border-color: rgba(29,158,117,0.3); background: rgba(29,158,117,0.02); }
+    .metric-label { font-size: 10px; color: #777; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric-value { font-size: 24px; font-weight: 500; color: #111; margin: 0; }
+    .metric-sub { font-size: 11px; color: #888; margin-top: 4px; }
+    .text-teal { color: #1D9E75; }
+    .text-coral { color: #e74c3c; }
+
+    /* ── CHARTS ── */
+    .view-toggles { display: flex; gap: 8px; margin-bottom: 1rem; }
+    .toggle-btn { 
+      background: #f5f5f3; border: 1px solid #e8e8e5; color: #888; 
+      padding: 6px 14px; border-radius: 6px; font-family: 'Syne', sans-serif; 
+      font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .toggle-btn:hover { background: #eee; color: #111; }
+    .toggle-btn.active { background: #111; color: #fff; border-color: #111; }
+
+    .chart-grid { display: grid; grid-template-columns: 1.5fr 1fr; gap: 10px; margin-bottom: 1.5rem; }
+    .chart-card { background: #fdfdfd; border: 1px solid #f0f0f0; border-radius: 12px; padding: 1.5rem; min-height: 380px; display: flex; flex-direction: column; }
+    .chart-card-header { margin-bottom: 1.5rem; }
+    .chart-card-title { font-size: 14px; font-weight: 600; color: #111; }
+    .chart-card-sub { font-size: 12px; color: #777; margin-top: 2px; }
+    .chart-wrap { flex: 1; position: relative; min-height: 0; }
+
+    /* ── TABLES ── */
+    .table-section { margin-top: 1.5rem; }
+    .table-wrap { background: #fff; border-radius: 12px; border: 1px solid #f0f0f0; overflow-x: auto; padding: 8px; margin-bottom: 1.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th { text-align: left; padding: 12px 10px; font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #f0f0f0; }
+    tbody td { padding: 10px; border-bottom: 1px solid #f9f9f9; color: #444; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #fbfbfb; }
+
+    .row-pace { background: rgba(233, 162, 40, 0.04) !important; font-weight: 600; }
+    .row-pace td { border-bottom: 1px solid rgba(233, 162, 40, 0.1); }
+    .badge-pace { background: #E9A228; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 9px; margin-left: 6px; }
+
+    /* ── RETENTION BAR ── */
+    .ret-bar-wrap { width: 60px; height: 16px; background: #eee; border-radius: 4px; overflow: hidden; position: relative; }
+    .ret-bar-fill { height: 100%; transition: width 0.4s; }
+    .ret-green { background: #1D9E75; }
+    .ret-amber { background: #E9A228; }
+    .ret-red { background: #e74c3c; }
+
+    /* ── ASSUMPTIONS ── */
+    .assumptions-box { background: #f9f9f9; border-radius: 12px; padding: 1.5rem; border: 1px solid #eee; margin-top: 3rem; }
+    .assumptions-title { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 600; color: #111; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 1rem; }
+    .assumptions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; }
+    .assumption-item { display: flex; flex-direction: column; gap: 4px; }
+    .assumption-label { font-size: 11px; color: #777; }
+    .assumption-val { font-size: 13px; font-weight: 600; color: #111; }
+
+    @media(max-width: 1000px) { .chart-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <!-- LOADER -->
+  <div id="loader">
+    <div class="loader-ring"></div>
+    <div class="loader-text">Analyzing cohort data...</div>
+  </div>
+
+  <nav>
+    <a class="nav-brand" href="index.html">Symptomatic <span>Quiz</span></a>
+    <div class="nav-links">
+      <a class="nav-link" href="index.html">Overview</a>
+      <a class="nav-link" href="analytics.html">Analytics</a>
+      <a class="nav-link" href="membership.html">Membership Pipeline</a>
+      <a class="nav-link active" href="revenue.html">Revenue</a>
+    </div>
+    <div class="nav-spacer"></div>
+  </nav>
+
+  <div class="page-body" id="root">
+    
+    <div class="header-row" style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <h1>Revenue & Retention Gap Analysis</h1>
+        <div class="subtitle">Cohort performance since the Free Trial launch on Aug 6, 2025.</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:#555;">
+          <div style="width:6px; height:6px; background:#1D9E75; border-radius:50%;"></div> Stored Data
+        </div>
+        <button onclick="if(confirm('Reset all data?')) { DataManager.clearAll(); location.href='index.html'; }" 
+                style="background:none; border:0.5px solid #ccc; border-radius:8px; padding:5px 12px; font-size:11px; color:#555; cursor:pointer; font-family:'Syne',sans-serif;">
+          Clear Cache
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 1: RETENTION GAP -->
+    <p class="section-heading">Free Trial Cohort Analysis</p>
+    
+    <div class="kpi-grid">
+      <div class="metric-card">
+        <div class="metric-label">Total Trial Signups</div>
+        <div class="metric-value" id="gap-trials">--</div>
+        <div class="metric-sub">Aug 2025 – Present</div>
+      </div>
+      <div class="metric-card highlight">
+        <div class="metric-label">Currently Active</div>
+        <div class="metric-value text-teal" id="gap-active">--</div>
+        <div class="metric-sub" id="gap-active-rate">--% active rate</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Cancelled</div>
+        <div class="metric-value" id="gap-cancelled">--</div>
+        <div class="metric-sub" id="gap-cancelled-rate">--% formal loss</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Silent Drop-offs</div>
+        <div class="metric-value" id="gap-silent">--</div>
+        <div class="metric-sub" id="gap-silent-rate">--% unbilled</div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="metric-card">
+        <div class="metric-label">Potential Revenue</div>
+        <div class="metric-value" id="gap-potential">$--</div>
+        <div class="metric-sub">Zero-churn scenario</div>
+      </div>
+      <div class="metric-card highlight">
+        <div class="metric-label">Actual Revenue Collected</div>
+        <div class="metric-value text-teal" id="gap-actual">$--</div>
+        <div class="metric-sub">Net verified payments</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Revenue Gap</div>
+        <div class="metric-value text-coral" id="gap-dollar-gap">$--</div>
+        <div class="metric-sub">Total revenue "left on table"</div>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <div class="chart-card-title">Free Trial Membership Tier Breakdown</div>
+          <div class="chart-card-sub">Retention and value loss for trial-specific members.</div>
+        </div>
+        <div class="table-wrap">
+          <table id="tier-breakdown-table">
+            <thead>
+              <tr><th>Tier</th><th>Total</th><th>Active</th><th>Rate</th><th>Visual</th><th>Rev Gap</th></tr>
+            </thead>
+            <tbody id="tier-breakdown-body"></tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <div class="chart-card-title">Free Trial Monthly Revenue Actuals</div>
+          <div class="chart-card-sub">Verified payments collected from the trial cohort.</div>
+        </div>
+        <div class="chart-wrap"><canvas id="chart-monthly-actual"></canvas></div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="min-height: 0; margin-bottom: 1.5rem;">
+      <div class="chart-card-header">
+        <div class="chart-card-title">Free Trial Cohort Signup Performance</div>
+        <div class="chart-card-sub">Retention and revenue efficiency for trial members (Started Aug 6, 2025 onwards).</div>
+      </div>
+      <div class="table-wrap">
+        <table id="cohort-performance-table">
+          <thead>
+            <tr><th>Signup Month</th><th>Signups</th><th>Active Members</th><th>Retention</th><th>Visual</th><th>Rev Gap</th></tr>
+          </thead>
+          <tbody id="cohort-performance-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="chart-card" style="min-height: 0; margin-bottom: 1.5rem;">
+      <div class="chart-card-header">
+        <div class="chart-card-title">Seasonality: Month-over-Month Comparison</div>
+        <div class="chart-card-sub">Comparing historical signups and performance for each calendar month across different years.</div>
+      </div>
+      <div class="table-wrap">
+        <table id="yoy-performance-table">
+          <thead>
+            <tr><th>Month Group</th><th>Year</th><th>Signups</th><th>Active</th><th>Retention</th><th>Visual</th><th>Rev Gap</th></tr>
+          </thead>
+          <tbody id="yoy-performance-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 2: PROJECTIONS -->
+    <p class="section-heading">Growth Scenarios &amp; Projections</p>
+    
+    <div class="view-toggles">
+      <button class="toggle-btn active" onclick="setProjectionView('1y', this)">1-Year Cumulative</button>
+      <button class="toggle-btn" onclick="setProjectionView('5y', this)">5-Year Cumulative</button>
+      <button class="toggle-btn" onclick="setProjectionView('count', this)">Active Member Count</button>
+    </div>
+
+    <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);" id="proj-summary-cards">
+      <div class="metric-card">
+        <div class="metric-label" id="proj-card-1-label">Best Case Total</div>
+        <div class="metric-value" id="proj-card-1-val">$--</div>
+        <div class="metric-sub">100% Retention</div>
+      </div>
+      <div class="metric-card highlight">
+        <div class="metric-label" id="proj-card-2-label">Current Pace Total</div>
+        <div class="metric-value" id="proj-card-2-val">$--</div>
+        <div class="metric-sub" id="proj-card-2-sub">54% Retention</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label" id="proj-card-3-label">The Opportunity Gap</div>
+        <div class="metric-value text-coral" id="proj-card-3-val">$--</div>
+        <div class="metric-sub">Potential vs Current Pace</div>
+      </div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom: 2rem; min-height: 450px;">
+      <div class="chart-wrap"><canvas id="chart-projections"></canvas></div>
+    </div>
+
+    <div class="table-section">
+      <div class="chart-card-title" style="margin-bottom: 1rem;">Retention Scenario Summary</div>
+      <div class="table-wrap">
+        <table id="proj-summary-table">
+          <thead>
+            <tr><th>Scenario</th><th>Monthly Churn</th><th>Month 12 Members</th><th>Year 1 Total Rev</th><th>Versus Pace</th></tr>
+          </thead>
+          <tbody id="proj-summary-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="chart-grid">
+      <div class="table-section">
+        <div class="chart-card-title" style="margin-bottom: 1rem;">Cumulative Revenue By Month</div>
+        <div class="table-wrap">
+          <table id="proj-cum-table">
+            <thead>
+              <tr id="proj-cum-head"><th>Scenario</th></tr>
+            </thead>
+            <tbody id="proj-cum-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="table-section">
+        <div class="chart-card-title" style="margin-bottom: 1rem;">Monthly Isolated Revenue</div>
+        <div class="table-wrap">
+          <table id="proj-iso-table">
+            <thead>
+              <tr id="proj-iso-head"><th>Scenario</th></tr>
+            </thead>
+            <tbody id="proj-iso-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-section">
+      <div class="chart-card-title" style="margin-bottom: 1rem;">Long-Term View (5-Year Forecast)</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Scenario</th><th>Year 1</th><th>Year 2</th><th>Year 3</th><th>Year 4</th><th>Year 5</th><th>Year 5 Members</th></tr>
+          </thead>
+          <tbody id="proj-5yr-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="assumptions-box">
+      <div class="assumptions-title">Model Assumptions</div>
+      <div class="assumptions-grid">
+        <div class="assumption-item">
+          <div class="assumption-label">Starting Active Base</div>
+          <div class="assumption-val" id="asm-start">299 Members</div>
+        </div>
+        <div class="assumption-item">
+          <div class="assumption-label">New Signups / Month</div>
+          <div class="assumption-val" id="asm-signups">67 New Leads</div>
+        </div>
+        <div class="assumption-item">
+          <div class="assumption-label">Weighted Avg Price</div>
+          <div class="assumption-val" id="asm-price">$7.48 / month</div>
+        </div>
+        <div class="assumption-item">
+          <div class="assumption-label">Trial Period</div>
+          <div class="assumption-val">1 Month (Free)</div>
+        </div>
+        <div class="assumption-item" style="grid-column: span 2;">
+          <div class="assumption-label">Revenue Logic</div>
+          <div class="assumption-val" style="font-size:11px; font-weight:400; font-family:inherit; color:#666;">First month is excluded from revenue. Retention is applied annually as a scenario, and modeled on a decay curve per month. Growth is assumed flat (linear signups).</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const TRIAL_START = new Date('2025-08-06T00:00:00Z');
+    
+    let jotformData = [];
+    let accountsData = [];
+    let financialData = [];
+    
+    let trialCohort = new Map(); // email -> full record
+    let currentPace = 0.54; // default, will calculate
+    let monthlySignupsAvg = 67; // default, will calculate
+    let weightedPrice = 7.48; // default, will calculate
+    let activeStartCount = 299; // default, will calculate
+
+    let projectionView = '1y'; // '1y', '5y', 'count'
+    let currentProjectionData = {};
+    let projCharts = null;
+    let actualTrendChart = null;
+
+    const COLORS = [
+      '#1D9E75', // 100%
+      '#378ADD', // 90%
+      '#74b9ff', // 80%
+      '#a29bfe', // 70%
+      '#E9A228', // Pace (54%)
+      '#fab1a0', // 40%
+      '#e17055', // 30%
+      '#d63031'  // 20%
+    ];
+
+    function fmt(n) { return Number(n).toLocaleString(); }
+    function cur(n) { return '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0}); }
+    function pct(a,b) { return b ? Math.round(a/b*100) : 0; }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      if (!(await DataManager.hasData())) {
+        document.getElementById('loader').innerHTML = `
+          <div style="text-align:center; padding: 40px;">
+            <p style="margin-bottom:20px; color:#555;">No data found. Please upload your CSVs first.</p>
+            <a href="index.html" style="background:#111; color:#fff; padding:10px 20px; border-radius:8px; text-decoration:none;">Go to Setup</a>
+          </div>
+        `;
+        return;
+      }
+
+      jotformData = await DataManager.loadData(DataManager.KEYS.JOTFORM);
+      accountsData = await DataManager.loadData(DataManager.KEYS.ACCOUNTS);
+      financialData = await DataManager.loadData(DataManager.KEYS.FINANCIAL);
+
+      processRevenueData();
+    });
+
+    function processRevenueData() {
+      // 1. Identify Trial Cohort (Started >= Aug 6, 2025 with 'free' discount)
+      const TRIAL_START_DATE = new Date('2025-08-06');
+      
+      financialData.forEach(row => {
+        const email = (row['Email'] || '').toLowerCase().trim();
+        const disc = (row['Discount'] || '').toLowerCase();
+        const items = (row['Items'] || '').toLowerCase();
+        const date = new Date(row['Date']);
+        
+        if (email && disc === 'free' && !isNaN(date) && date >= TRIAL_START_DATE) {
+          if (!trialCohort.has(email)) {
+             let tier = 'Public';
+             let price = 5.50;
+             if (items.includes('physician')) { tier = 'Physicians'; price = 19.50; }
+             else if (items.includes('clinician')) { tier = 'Clinicians'; price = 13.00; }
+             else if (items.includes('early career')) { tier = 'Early Career'; price = 7.50; }
+             
+             trialCohort.set(email, {
+               email, tier, price, signupDate: date, signupStr: row['Date'],
+               actualPaid: 0,
+               paidMonths: 0,
+               potentialMonths: 0,
+               status: 'Dropped Off'
+             });
+          }
+        }
+      });
+
+      // 2. Map Financial & Account Status to Cohort
+      const now = new Date();
+      financialData.forEach(row => {
+        const email = (row['Email'] || '').toLowerCase().trim();
+        const amt = parseFloat(row['Membership Sub-Total']) || 0;
+        const disc = (row['Discount'] || '').toLowerCase();
+        
+        if (trialCohort.has(email)) {
+          const m = trialCohort.get(email);
+          if (amt > 0 && disc !== 'free') {
+            m.actualPaid += amt;
+            m.paidMonths++;
+          }
+        }
+      });
+
+      accountsData.forEach(row => {
+        const email = (row['Email'] || '').toLowerCase().trim();
+        if (trialCohort.has(email)) {
+          const m = trialCohort.get(email);
+          const billing = (row['Billing Method'] || '').trim();
+          if (billing === 'Cancelled') m.status = 'Cancelled';
+          else if (billing) m.status = 'Active';
+        }
+      });
+
+      // 3. Calculate Potential Revenue (Months since signup - 1)
+      trialCohort.forEach(m => {
+        const monthsDiff = (now.getFullYear() - m.signupDate.getFullYear()) * 12 + (now.getMonth() - m.signupDate.getMonth());
+        m.potentialMonths = Math.max(0, monthsDiff);
+      });
+
+      // Update Gap Analysis UI
+      const totalTrialCount = trialCohort.size;
+      let activeCount = 0;
+      let cancelledCount = 0;
+      let silentCount = 0;
+      let potRev = 0;
+      let actRev = 0;
+
+      trialCohort.forEach(m => {
+        if (m.status === 'Active') activeCount++;
+        else if (m.status === 'Cancelled') cancelledCount++;
+        else silentCount++;
+        
+        potRev += m.potentialMonths * m.price;
+        actRev += m.actualPaid;
+      });
+
+      document.getElementById('gap-trials').textContent = fmt(totalTrialCount);
+      document.getElementById('gap-active').textContent = fmt(activeCount);
+      document.getElementById('gap-active-rate').textContent = pct(activeCount, totalTrialCount) + '% active rate';
+      document.getElementById('gap-cancelled').textContent = fmt(cancelledCount);
+      document.getElementById('gap-cancelled-rate').textContent = pct(cancelledCount, totalTrialCount) + '% formal loss';
+      document.getElementById('gap-silent').textContent = fmt(silentCount);
+      document.getElementById('gap-silent-rate').textContent = pct(silentCount, totalTrialCount) + '% unbilled';
+
+      document.getElementById('gap-potential').textContent = cur(potRev);
+      document.getElementById('gap-actual').textContent = cur(actRev);
+      document.getElementById('gap-dollar-gap').textContent = cur(potRev - actRev);
+
+      // 4. Tier Breakdown
+      const tiers = {
+        'Physicians': { count:0, active:0, price:19.5, actual:0, pot:0 },
+        'Clinicians': { count:0, active:0, price:13.0, actual:0, pot:0 },
+        'Public': { count:0, active:0, price:5.5, actual:0, pot:0 },
+        'Early Career': { count:0, active:0, price:7.5, actual:0, pot:0 }
+      };
+
+      trialCohort.forEach(m => {
+        if (tiers[m.tier]) {
+          const t = tiers[m.tier];
+          t.count++;
+          if (m.status === 'Active') t.active++;
+          t.actual += m.actualPaid;
+          t.pot += m.potentialMonths * m.price;
+        }
+      });
+
+      let tierHtml = '';
+      for (const [name, t] of Object.entries(tiers)) {
+        if (t.count === 0) continue;
+        const r = pct(t.active, t.count);
+        const gap = t.pot - t.actual;
+        const barColor = r >= 60 ? 'ret-green' : r >= 40 ? 'ret-amber' : 'ret-red';
+        
+        tierHtml += `<tr>
+          <td><b>${name}</b> <span style="color:#888;font-size:10px;">($${t.price})</span></td>
+          <td>${t.count}</td>
+          <td>${t.active}</td>
+          <td>${r}%</td>
+          <td>
+            <div class="ret-bar-wrap"><div class="ret-bar-fill ${barColor}" style="width:${r}%"></div></div>
+          </td>
+          <td class="text-coral">${cur(gap)}</td>
+        </tr>`;
+      }
+      document.getElementById('tier-breakdown-body').innerHTML = tierHtml;
+
+      // 5. Signup Cohort & Visual
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const months = {};
+      trialCohort.forEach(m => {
+        const monthKey = m.signupDate.toISOString().substring(0, 7);
+        if (!months[monthKey]) months[monthKey] = { members: 0, active: 0, actual: 0, pot: 0, date: m.signupDate };
+        const mm = months[monthKey];
+        mm.members++;
+        if (m.status === 'Active') mm.active++;
+        mm.actual += m.actualPaid;
+        mm.pot += m.potentialMonths * m.price;
+      });
+
+      const sortedMonths = Object.keys(months).sort();
+      let cohortHtml = '';
+      sortedMonths.forEach(mk => {
+        const mData = months[mk];
+        const r = pct(mData.active, mData.members);
+        const gap = mData.pot - mData.actual;
+        const barColor = r >= 60 ? 'ret-green' : r >= 40 ? 'ret-amber' : 'ret-red';
+        const displayDate = monthNames[mData.date.getMonth()] + ' ' + mData.date.getFullYear();
+        
+        cohortHtml += `<tr>
+          <td>${displayDate}</td>
+          <td>${mData.members}</td>
+          <td>${mData.active}</td>
+          <td>${r}%</td>
+          <td>
+            <div class="ret-bar-wrap"><div class="ret-bar-fill ${barColor}" style="width:${r}%"></div></div>
+          </td>
+          <td class="text-coral">${cur(gap)}</td>
+        </tr>`;
+      });
+      document.getElementById('cohort-performance-body').innerHTML = cohortHtml;
+
+      // 5b. YoY Comparison Table (All Data)
+      const allMembers = new Map();
+      const nowJoin = new Date();
+      
+      // Build a full member map to join financial and account data
+      accountsData.forEach(row => {
+        const email = (row['Email'] || '').toLowerCase().trim();
+        const dateStr = row['Join Date'] || row['Date'];
+        const date = new Date(dateStr);
+        if (!email || isNaN(date)) return;
+        
+        let tier = 'Public'; let price = 5.50;
+        if (String(row['ATNS Physicians']).toLowerCase().includes('yes')) { tier = 'Physicians'; price = 19.50; }
+        else if (String(row['ATNS Clinicians']).toLowerCase().includes('yes')) { tier = 'Clinicians'; price = 13.00; }
+        else if (String(row['ATNS Early Career']).toLowerCase().includes('yes')) { tier = 'Early Career'; price = 7.50; }
+        else if (String(row['ATNS Public']).toLowerCase().includes('yes')) { tier = 'Public'; price = 5.50; }
+
+        const billing = (row['Billing Method'] || '').trim();
+        const isActive = billing && !billing.toLowerCase().includes('cancelled');
+        
+        const mDiff = (nowJoin.getFullYear() - date.getFullYear()) * 12 + (nowJoin.getMonth() - date.getMonth());
+
+        allMembers.set(email, {
+          email, date, tier, price, isActive,
+          actual: 0, pot: Math.max(0, mDiff) * price
+        });
+      });
+
+      financialData.forEach(row => {
+        const email = (row['Email'] || '').toLowerCase().trim();
+        const amt = parseFloat(row['Membership Sub-Total']) || 0;
+        if (allMembers.has(email) && amt > 0) {
+          allMembers.get(email).actual += amt;
+        }
+      });
+
+      const yoy = {}; // monthIndex -> { year -> { members, active, actual, pot } }
+      allMembers.forEach(m => {
+        const mIdx = m.date.getMonth();
+        const year = m.date.getFullYear();
+        if (!yoy[mIdx]) yoy[mIdx] = {};
+        if (!yoy[mIdx][year]) yoy[mIdx][year] = { members: 0, active: 0, actual: 0, pot: 0 };
+        const yd = yoy[mIdx][year];
+        yd.members++;
+        if (m.isActive) yd.active++;
+        yd.actual += m.actual;
+        yd.pot += m.pot;
+      });
+
+      let yoyHtml = '';
+      const sortedMonthIndices = [0,1,2,3,4,5,6,7,8,9,10,11]; // Jan to Dec
+      sortedMonthIndices.forEach(mIdx => {
+        if (!yoy[mIdx]) return;
+        const years = Object.keys(yoy[mIdx]).sort();
+        years.forEach((year, i) => {
+          const d = yoy[mIdx][year];
+          const r = pct(d.active, d.members);
+          const gap = d.pot - d.actual;
+          const barColor = r >= 60 ? 'ret-green' : r >= 40 ? 'ret-amber' : 'ret-red';
+          
+          yoyHtml += `<tr>
+            <td>${i === 0 ? `<b>${monthNames[mIdx]}</b>` : ''}</td>
+            <td>${year}</td>
+            <td>${d.members}</td>
+            <td>${d.active}</td>
+            <td>${r}%</td>
+            <td>
+              <div class="ret-bar-wrap"><div class="ret-bar-fill ${barColor}" style="width:${r}%"></div></div>
+            </td>
+            <td class="text-coral">${cur(gap)}</td>
+          </tr>`;
+        });
+      });
+      document.getElementById('yoy-performance-body').innerHTML = yoyHtml;
+
+      // 6. Monthly Actual Revenue Chart
+      const monthlyActual = {};
+      financialData.forEach(row => {
+        const email = (row['Email'] || '').toLowerCase().trim();
+        const amt = parseFloat(row['Membership Sub-Total']) || 0;
+        const date = new Date(row['Date']);
+        if (trialCohort.has(email) && amt > 0 && !isNaN(date)) {
+           const mk = date.toISOString().substring(0, 7);
+           monthlyActual[mk] = (monthlyActual[mk] || 0) + amt;
+        }
+      });
+
+      const chartLabels = Object.keys(monthlyActual).sort();
+      renderActualTrend(chartLabels, chartLabels.map(l => monthlyActual[l]));
+
+      // 7. PREPARE PROJECTION CONSTANTS
+      currentPace = totalTrialCount ? activeCount / totalTrialCount : 0.54;
+      activeStartCount = activeCount;
+      
+      // Calculate Avg Signups/Month (excluding partial recent month)
+      const signupCounts = Object.keys(months).length;
+      monthlySignupsAvg = signupCounts > 1 ? Math.round(totalTrialCount / (signupCounts - 1)) : 67;
+      
+      // Weighted Price
+      let totalWeight = 0;
+      let totalMembersW = 0;
+      for (const t of Object.values(tiers)) {
+        totalWeight += t.count * t.price;
+        totalMembersW += t.count;
+      }
+      weightedPrice = totalMembersW ? totalWeight / totalMembersW : 7.48;
+
+      document.getElementById('asm-start').textContent = activeStartCount + ' Members';
+      document.getElementById('asm-signups').textContent = monthlySignupsAvg + ' New Leads';
+      document.getElementById('asm-price').textContent = '$' + weightedPrice.toFixed(2) + ' / month';
+
+      runProjections();
+      
+      document.getElementById('loader').classList.add('hidden');
+      document.getElementById('root').style.opacity = '1';
+    }
+
+    function renderActualTrend(labels, data) {
+      if (actualTrendChart) actualTrendChart.destroy();
+      actualTrendChart = new Chart(document.getElementById('chart-monthly-actual'), {
+        type: 'line',
+        data: {
+          labels: labels.map(l => { const p=l.split('-'); return p[1]+'/'+p[0].slice(2); }),
+          datasets: [{ data, borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.1)', fill: true, tension: 0.3, pointRadius: 4 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, grid: { color: '#f0f0f0' }, ticks: { callback: v => '$' + v } }, x: { grid: { display : false } } }
+        }
+      });
+    }
+
+    // ── PROJECTIONS LOGIC ──
+
+    function runProjections() {
+      const scenarios = [1.0, 0.9, 0.8, 0.7, currentPace, 0.4, 0.3, 0.2];
+      const model = {
+        months: 60,
+        signupsPerMonth: monthlySignupsAvg,
+        price: weightedPrice,
+        startMembers: activeStartCount
+      };
+
+      const results = scenarios.map(annualRet => {
+        const monthlyRet = Math.pow(annualRet, 1 / 12);
+        let members = model.startMembers;
+        let cumulativeRev = 0;
+        const monthlyRevArr = [];
+        const cumulativeRevArr = [];
+        const membersArr = [];
+        
+        // 5-year buckets
+        const fiveYearData = [];
+
+        // Track signup cohorts that enter billing after 1 month
+        const signupBuffer = new Array(61).fill(model.signupsPerMonth);
+
+        for (let m = 0; m <= 60; m++) {
+          if (m > 0) {
+            members = (members * monthlyRet) + signupBuffer[m-1];
+          }
+          
+          const rev = members * model.price;
+          cumulativeRev += (m === 0 ? 0 : rev); // No rev on month 0
+
+          monthlyRevArr.push(m === 0 ? 0 : rev);
+          cumulativeRevArr.push(cumulativeRev);
+          membersArr.push(members);
+
+          if (m % 12 === 0 && m > 0) {
+            fiveYearData.push({ year: m/12, cumulative: cumulativeRev, members: Math.round(members) });
+          }
+        }
+
+        return {
+          annualRet,
+          monthlyChurn: 1 - monthlyRet,
+          monthlyRevArr,
+          cumulativeRevArr,
+          membersArr,
+          fiveYearData
+        };
+      });
+
+      currentProjectionData = results;
+      updateUI();
+    }
+
+    function setProjectionView(view, btn) {
+      projectionView = view;
+      document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      updateUI();
+    }
+
+    function updateUI() {
+      const results = currentProjectionData;
+      const paceIdx = 4; // currentPace is the 5th scenario
+
+      // Update Summary Cards
+      const best = results[0];
+      const pace = results[paceIdx];
+
+      if (projectionView === '1y') {
+        document.getElementById('proj-card-1-label').textContent = 'Best Case Total';
+        document.getElementById('proj-card-1-val').textContent = cur(best.cumulativeRevArr[12]);
+        document.getElementById('proj-card-2-label').textContent = 'Current Pace Total';
+        document.getElementById('proj-card-2-val').textContent = cur(pace.cumulativeRevArr[12]);
+        document.getElementById('proj-card-2-sub').textContent = Math.round(currentPace*100) + '% Retention (Annual)';
+        document.getElementById('proj-card-3-label').textContent = 'The Opportunity Gap';
+        document.getElementById('proj-card-3-val').textContent = cur(best.cumulativeRevArr[12] - pace.cumulativeRevArr[12]);
+      } else if (projectionView === '5y') {
+        document.getElementById('proj-card-1-label').textContent = 'Best Case (5yr)';
+        document.getElementById('proj-card-1-val').textContent = cur(best.cumulativeRevArr[60]);
+        document.getElementById('proj-card-2-label').textContent = 'Current Pace (5yr)';
+        document.getElementById('proj-card-2-val').textContent = cur(pace.cumulativeRevArr[60]);
+        document.getElementById('proj-card-2-sub').textContent = Math.round(currentPace*100) + '% Pace';
+        document.getElementById('proj-card-3-label').textContent = 'Long Term Gap';
+        document.getElementById('proj-card-3-val').textContent = cur(best.cumulativeRevArr[60] - pace.cumulativeRevArr[60]);
+      } else {
+        document.getElementById('proj-card-1-label').textContent = 'Month 12 Members';
+        document.getElementById('proj-card-1-val').textContent = fmt(Math.round(best.membersArr[12]));
+        document.getElementById('proj-card-2-label').textContent = 'Current Pace Count';
+        document.getElementById('proj-card-2-val').textContent = fmt(Math.round(pace.membersArr[12]));
+        document.getElementById('proj-card-2-sub').textContent = 'At 12 Months';
+        document.getElementById('proj-card-3-label').textContent = 'Lost to Churn';
+        document.getElementById('proj-card-3-val').textContent = fmt(Math.round(best.membersArr[60] - pace.membersArr[60]));
+        document.getElementById('proj-card-3-val').nextElementSibling.textContent = 'Signups lost by Year 5';
+      }
+
+      // Update Tables
+      let summaryHtml = '';
+      let cumHtml = '';
+      let isoHtml = '';
+      let fiveHtml = '';
+
+      results.forEach((r, idx) => {
+        const isPace = idx === paceIdx;
+        const rowClass = isPace ? 'row-pace' : '';
+        const paceTag = isPace ? '<span class="badge-pace">PACE</span>' : '';
+        
+        summaryHtml += `<tr class="${rowClass}">
+          <td><b>${Math.round(r.annualRet*100)}%</b> ${paceTag}</td>
+          <td>${(r.monthlyChurn*100).toFixed(1)}%</td>
+          <td>${fmt(Math.round(r.membersArr[12]))}</td>
+          <td>${cur(r.cumulativeRevArr[12])}</td>
+          <td>${isPace ? '--' : cur(r.cumulativeRevArr[12] - pace.cumulativeRevArr[12])}</td>
+        </tr>`;
+
+        let cumRow = `<td><b>${Math.round(r.annualRet*100)}%</b></td>`;
+        let isoRow = `<td><b>${Math.round(r.annualRet*100)}%</b></td>`;
+        for (let m = 1; m <= 12; m++) {
+          cumRow += `<td>${cur(r.cumulativeRevArr[m])}</td>`;
+          isoRow += `<td>${cur(r.monthlyRevArr[m])}</td>`;
+        }
+        cumHtml += `<tr class="${rowClass}">${cumRow}</tr>`;
+        isoHtml += `<tr class="${rowClass}">${isoRow}</tr>`;
+
+        fiveHtml += `<tr class="${rowClass}">
+          <td><b>${Math.round(r.annualRet*100)}%</b></td>
+          <td>${cur(r.fiveYearData[0].cumulative)}</td>
+          <td>${cur(r.fiveYearData[1].cumulative)}</td>
+          <td>${cur(r.fiveYearData[2].cumulative)}</td>
+          <td>${cur(r.fiveYearData[3].cumulative)}</td>
+          <td>${cur(r.fiveYearData[4].cumulative)}</td>
+          <td>${fmt(r.fiveYearData[4].members)}</td>
+        </tr>`;
+      });
+
+      document.getElementById('proj-summary-body').innerHTML = summaryHtml;
+      document.getElementById('proj-cum-body').innerHTML = cumHtml;
+      document.getElementById('proj-iso-body').innerHTML = isoHtml;
+      document.getElementById('proj-5yr-body').innerHTML = fiveHtml;
+
+      // Table Headers (Month Names)
+      const monthsArr = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
+      let headHtml = '<th>Scenario</th>';
+      for(let i=0; i<12; i++) headHtml += `<th>${monthsArr[i]}</th>`;
+      document.getElementById('proj-cum-head').innerHTML = headHtml;
+      document.getElementById('proj-iso-head').innerHTML = headHtml;
+
+      // Update Chart
+      renderProjectionChart();
+    }
+
+    function renderProjectionChart() {
+      const results = currentProjectionData;
+      const labels = [];
+      const showMonths = projectionView === 'count' || projectionView === '1y' ? 13 : 61;
+      for (let i = 0; i < showMonths; i++) labels.push(projectionView === 'count' || projectionView === '1y' ? 'M' + i : 'Y' + (i/12).toFixed(1));
+
+      const datasets = results.map((r, idx) => {
+        let chartData = [];
+        if (projectionView === '1y') chartData = r.cumulativeRevArr.slice(0, 13);
+        else if (projectionView === '5y') chartData = r.cumulativeRevArr.slice(0, 61);
+        else chartData = r.membersArr.slice(0, 13);
+
+        const isPace = idx === 4;
+        return {
+          label: Math.round(r.annualRet*100) + '%',
+          data: chartData,
+          borderColor: COLORS[idx],
+          backgroundColor: COLORS[idx],
+          borderWidth: isPace ? 4 : 2,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.2
+        };
+      });
+
+      if (projCharts) projCharts.destroy();
+      const ctx = document.getElementById('chart-projections').getContext('2d');
+      projCharts = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { 
+            legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10, family: 'DM Mono' } } },
+            tooltip: { 
+              callbacks: { 
+                label: (ctx) => {
+                   const v = ctx.raw;
+                   return ctx.dataset.label + ' Retention: ' + (projectionView === 'count' ? fmt(Math.round(v)) : cur(v));
+                }
+              }
+            }
+          },
+          scales: {
+            y: { grid: { color: 'rgba(0,0,0,0.03)' }, ticks: { font: { family: 'DM Mono' }, callback: v => projectionView === 'count' ? v : '$' + v } },
+            x: { grid: { display : false }, ticks: { font: { family: 'DM Mono' } } }
+          }
+        }
+      });
+    }
+
+  </script>
+</body>
+</html>
