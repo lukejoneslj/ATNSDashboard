@@ -637,13 +637,15 @@
         const email = (row['Email'] || '').toLowerCase().trim();
         if (email) {
           const method = (row['Billing Method'] || '').toLowerCase().trim();
-          
+          const cancelField = (row['Cancel'] || '').trim();
+
           let statusLabel = 'Active';
           let isCancelled = false;
           let isDropped = false;
-          
-          // Case-insensitive checks for robustness
-          if (method.includes('cancelled') || method.includes('canceled')) {
+
+          // Post-Jan 2026: cancellations tracked via Billing Method = "Cancelled"
+          // Pre-Jan 2026: cancellations tracked via Cancel column having a value
+          if (method.includes('cancelled') || method.includes('canceled') || cancelField) {
             statusLabel = 'Cancelled';
             isCancelled = true;
           } else if (!method || method === 'undefined' || method === 'null') {

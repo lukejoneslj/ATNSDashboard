@@ -470,9 +470,14 @@
         const email = (row['Email'] || '').toLowerCase().trim();
         if (trialCohort.has(email)) {
           const m = trialCohort.get(email);
-          const billing = (row['Billing Method'] || '').trim();
-          if (billing === 'Cancelled') m.status = 'Cancelled';
-          else if (billing) m.status = 'Active';
+          const billing = (row['Billing Method'] || '').toLowerCase().trim();
+          const cancelField = (row['Cancel'] || '').trim();
+          // Post-Jan 2026: billing = "cancelled"; Pre-Jan 2026: Cancel column has a value
+          if (billing.includes('cancelled') || billing.includes('canceled') || cancelField) {
+            m.status = 'Cancelled';
+          } else if (billing) {
+            m.status = 'Active';
+          }
         }
       });
 
@@ -611,8 +616,9 @@
         else if (String(row['ATNS Early Career']).toLowerCase().includes('yes')) { m.tier = 'Early Career'; m.price = 7.50; }
         else if (String(row['ATNS Public']).toLowerCase().includes('yes')) { m.tier = 'Public'; m.price = 5.50; }
 
-        const billing = (row['Billing Method'] || '').trim();
-        m.isActive = billing && !billing.toLowerCase().includes('cancelled');
+        const billing = (row['Billing Method'] || '').toLowerCase().trim();
+        const cancelField = (row['Cancel'] || '').trim();
+        m.isActive = billing && !billing.includes('cancelled') && !billing.includes('canceled') && !cancelField;
       });
 
       const yoy = {}; // monthIndex -> { year -> { members, active, churnedRevMonth } }
