@@ -845,23 +845,24 @@
 
     function renderFunnelImpact(pre, post) {
       if (currentCharts.impact) currentCharts.impact.destroy();
+      const yMax = Math.ceil((Math.max(pre, post) + 2) / 5) * 5; // round up to nearest 5
       currentCharts.impact = new Chart(document.getElementById('chart-funnel-impact'), {
         type: 'bar',
         data: {
           labels: ['Before Trial (Baseline)', 'Trial-Only Path'],
           datasets: [{
-            data: [pre.toFixed(1), post.toFixed(1)],
+            data: [parseFloat(pre.toFixed(1)), parseFloat(post.toFixed(1))],
             backgroundColor: ['#eee', '#1D9E75'],
             borderRadius: 6
           }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { 
+          plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label || ''} ${ctx.raw}% conv.` } }
+            tooltip: { callbacks: { label: ctx => ` ${ctx.raw}% conversion` } }
           },
-          scales: { y: { beginAtZero: true, max: Math.max(pre, post) + 5, ticks: { callback: v => v + '%' } }, x: { grid: { display: false } } }
+          scales: { y: { beginAtZero: true, max: yMax, ticks: { callback: v => v + '%' } }, x: { grid: { display: false } } }
         }
       });
     }
