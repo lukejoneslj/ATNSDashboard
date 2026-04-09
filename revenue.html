@@ -473,7 +473,7 @@
           const billing = (row['Billing Method'] || '').toLowerCase().trim();
           const cancelField = (row['Cancel'] || '').trim();
           // Post-Jan 2026: billing = "cancelled"; Pre-Jan 2026: Cancel column has a value
-          if (billing.includes('cancelled') || billing.includes('canceled') || cancelField) {
+          if (billing.includes('cancelled') || billing.includes('canceled') || cancelField === 'Cancel') {
             m.status = 'Cancelled';
           } else if (billing) {
             m.status = 'Active';
@@ -618,7 +618,7 @@
 
         const billing = (row['Billing Method'] || '').toLowerCase().trim();
         const cancelField = (row['Cancel'] || '').trim();
-        m.isActive = billing && !billing.includes('cancelled') && !billing.includes('canceled') && !cancelField;
+        m.isActive = billing && !billing.includes('cancelled') && !billing.includes('canceled') && cancelField !== 'Cancel';
       });
 
       const yoy = {}; // monthIndex -> { year -> { members, active, churnedRevMonth } }

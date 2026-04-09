@@ -388,10 +388,10 @@
     <p class="setup-desc">Upload your data exports to initialize the analytics.</p>
     
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-      <button class="setup-btn" onclick="document.getElementById('file-jotform').click()">Upload JotForm CSV</button>
-      <button class="setup-btn" onclick="document.getElementById('file-accounts').click()">Upload Accounts CSV</button>
+      <button id="btn-upload-jotform" class="setup-btn" onclick="document.getElementById('file-jotform').click()">Upload JotForm CSV</button>
+      <button id="btn-upload-accounts" class="setup-btn" onclick="document.getElementById('file-accounts').click()">Upload Accounts CSV</button>
     </div>
-    <button class="setup-btn secondary" onclick="document.getElementById('file-financial').click()" style="margin-bottom: 24px;">Upload Financial CSV</button>
+    <button id="btn-upload-financial" class="setup-btn secondary" onclick="document.getElementById('file-financial').click()" style="margin-bottom: 24px;">Upload Financial CSV</button>
 
     <div class="ga4-setup">
       <div class="setup-title" style="font-size: 14px; margin-bottom: 4px;">Top of Funnel (GA4)</div>
@@ -593,10 +593,13 @@ function animateCount(el, target) {
 async function handleFile(input, type) {
   const file = input.files[0];
   if (!file) return;
-  const btn = input.previousElementSibling;
-  btn.textContent = '✓ ' + file.name.substring(0, 15) + '...';
-  btn.style.borderColor = '#1D9E75';
-  btn.style.color = '#1D9E75';
+  const btn = document.getElementById('btn-upload-' + type);
+  if (btn) {
+    btn.textContent = '✓ ' + file.name.substring(0, 15) + (file.name.length > 15 ? '...' : '');
+    btn.style.background = '#1D9E75';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#1D9E75';
+  }
 }
 
 async function saveGA4Settings() {
@@ -628,8 +631,24 @@ async function handleUnifiedUpload() {
 
   const parseFile = (file) => {
     return new Promise((resolve) => {
-      if (!file) resolve(null);
-      Papa.parse(file, { header: true, skipEmptyLines: true, complete: (res) => resolve(res.data) });
+      if (!file) return resolve(null);
+      // transformHeader deduplicates column names (e.g. two "Email" columns)
+      // Without this, PapaParse creates a malformed key that shifts all columns after
+      // the duplicate, putting wrong data in Billing Method, Cancel, etc.
+      const seenHeaders = {};
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => {
+          if (seenHeaders[header] !== undefined) {
+            seenHeaders[header]++;
+            return header + '_' + seenHeaders[header];
+          }
+          seenHeaders[header] = 0;
+          return header;
+        },
+        complete: (res) => resolve(res.data)
+      });
     });
   };
 

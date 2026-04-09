@@ -645,7 +645,7 @@
 
           // Post-Jan 2026: cancellations tracked via Billing Method = "Cancelled"
           // Pre-Jan 2026: cancellations tracked via Cancel column having a value
-          if (method.includes('cancelled') || method.includes('canceled') || cancelField) {
+          if (method.includes('cancelled') || method.includes('canceled') || cancelField === 'Cancel') {
             statusLabel = 'Cancelled';
             isCancelled = true;
           } else if (!method || method === 'undefined' || method === 'null') {
