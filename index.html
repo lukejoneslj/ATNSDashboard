@@ -381,6 +381,38 @@
   <p class="loader-text">Loading local data…</p>
 </div>
 
+<!-- Setup Portal (Moved outside #root for visibility) -->
+<div id="setup-portal">
+  <div class="setup-card" style="max-width: 440px;">
+    <div class="setup-title">Dashboard Setup</div>
+    <p class="setup-desc">Upload your data exports to initialize the analytics.</p>
+    
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+      <button class="setup-btn" onclick="document.getElementById('file-jotform').click()">Upload JotForm CSV</button>
+      <button class="setup-btn" onclick="document.getElementById('file-accounts').click()">Upload Accounts CSV</button>
+    </div>
+    <button class="setup-btn secondary" onclick="document.getElementById('file-financial').click()" style="margin-bottom: 24px;">Upload Financial CSV</button>
+
+    <div class="ga4-setup">
+      <div class="setup-title" style="font-size: 14px; margin-bottom: 4px;">Top of Funnel (GA4)</div>
+      <p class="setup-desc" style="margin-bottom: 16px;">Google Analytics is pre-configured with your property.</p>
+      
+      <label>GA4 Property ID</label>
+      <input type="text" id="ga4-prop-id" class="ga4-input" value="470987705">
+      
+      <label>OAuth Client ID</label>
+      <input type="text" id="ga4-client-id" class="ga4-input" value="316091294103-2fqvs71a8quhelcbobtsapssfs5qb30r.apps.googleusercontent.com">
+      
+      <button class="setup-btn" onclick="saveGA4Settings()" style="background: #1D9E75;">Confirm Config & Continue</button>
+      <button class="setup-btn secondary" onclick="document.getElementById('setup-portal').classList.add('hidden')">Skip for now</button>
+    </div>
+
+    <input type="file" id="file-jotform" accept=".csv" onchange="handleFile(this, 'jotform')">
+    <input type="file" id="file-accounts" accept=".csv" onchange="handleFile(this, 'accounts')">
+    <input type="file" id="file-financial" accept=".csv" onchange="handleFile(this, 'financial')">
+  </div>
+</div>
+
 <div id="root">
 
   <div class="header-row">
@@ -389,39 +421,6 @@
       <p class="subtitle">Form analytics · ID 232155926573057 · Neuroplastic symptom assessment</p>
     </div>
     <div class="header-actions">
-      <div id="setup-portal">
-        <div class="setup-card" style="max-width: 440px;">
-          <div class="setup-title">Dashboard Setup</div>
-          <p class="setup-desc">Upload your data exports to initialize the analytics.</p>
-          
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
-            <button class="setup-btn" onclick="document.getElementById('file-jotform').click()">Upload JotForm CSV</button>
-            <button class="setup-btn" onclick="document.getElementById('file-accounts').click()">Upload Accounts CSV</button>
-          </div>
-          <button class="setup-btn secondary" onclick="document.getElementById('file-financial').click()" style="margin-bottom: 24px;">Upload Financial CSV</button>
-
-          <div class="ga4-setup">
-            <div class="setup-title" style="font-size: 14px; margin-bottom: 4px;">Top of Funnel (GA4)</div>
-            <p class="setup-desc" style="margin-bottom: 16px;">Connect Google Analytics for traffic & session data.</p>
-            
-            <label>GA4 Property ID</label>
-            <input type="text" id="ga4-prop-id" class="ga4-input" placeholder="e.g. 470987705" value="470987705">
-            
-            <label>OAuth Client ID</label>
-            <input type="text" id="ga4-client-id" class="ga4-input" placeholder="xxx.apps.googleusercontent.com">
-            
-            <label>API Key</label>
-            <input type="password" id="ga4-api-key" class="ga4-input" placeholder="AIzaSy...">
-
-            <button class="setup-btn" onclick="saveGA4Settings()" style="background: #1D9E75;">Save GA4 Config & Continue</button>
-            <button class="setup-btn secondary" onclick="document.getElementById('setup-portal').classList.add('hidden')">Skip for now</button>
-          </div>
-
-          <input type="file" id="file-jotform" accept=".csv" onchange="handleFile(this, 'jotform')">
-          <input type="file" id="file-accounts" accept=".csv" onchange="handleFile(this, 'accounts')">
-          <input type="file" id="file-financial" accept=".csv" onchange="handleFile(this, 'financial')">
-        </div>
-      </div>
       <div class="status-pill"><div class="status-dot"></div> Local Data</div>
       <button class="refresh-btn" onclick="if(confirm('Clear all stored data?')) { DataManager.clearAll(); location.reload(); }">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 1 0 21.99 12"/></svg>
@@ -509,13 +508,13 @@
     <div class="chart-card">
       <div class="chart-card-header">
         <div>
-          <div class="chart-card-title">Submissions Over Time</div>
-          <div class="chart-card-sub">Daily volume (sampled window)</div>
+          <div class="chart-card-title">Empty Slot</div>
+          <div class="chart-card-sub">Ready for more insights</div>
         </div>
-        <span class="chart-tag">Timeline</span>
+        <span class="chart-tag">Soon</span>
       </div>
-      <div class="chart-wrap" style="height:320px;">
-        <canvas id="chart-timeline"></canvas>
+      <div class="chart-wrap" style="height:320px;display:flex;align-items:center;justify-content:center;color:#ddd;font-style:italic;">
+        Additional context will appear here
       </div>
     </div>
   </div>
@@ -603,10 +602,9 @@ async function handleFile(input, type) {
 async function saveGA4Settings() {
   const propId = document.getElementById('ga4-prop-id').value;
   const clientId = document.getElementById('ga4-client-id').value;
-  const apiKey = document.getElementById('ga4-api-key').value;
   
-  if (clientId && apiKey && propId) {
-    const settings = { propId, clientId, apiKey };
+  if (clientId && propId) {
+    const settings = { propId, clientId };
     await DataManager.saveData(DataManager.KEYS.GA4_SETTINGS, settings);
   }
   
@@ -825,14 +823,19 @@ function buildTable(data) {
 
 // STARTUP
 window.addEventListener('DOMContentLoaded', async () => {
-  const settings = await DataManager.loadData(DataManager.KEYS.GA4_SETTINGS);
-  if (settings) {
-    document.getElementById('ga4-prop-id').value = settings.propId || '';
-    document.getElementById('ga4-client-id').value = settings.clientId || '316091294103-2fqvs71a8quhelcbobtsapssfs5qb30r.apps.googleusercontent.com';
-    document.getElementById('ga4-api-key').value = settings.apiKey || '';
-  } else {
-    document.getElementById('ga4-client-id').value = '316091294103-2fqvs71a8quhelcbobtsapssfs5qb30r.apps.googleusercontent.com';
+  let settings = await DataManager.loadData(DataManager.KEYS.GA4_SETTINGS);
+  
+  // Auto-configure defaults if missing
+  if (!settings || !settings.propId || !settings.clientId) {
+    settings = {
+      propId: '470987705',
+      clientId: '316091294103-2fqvs71a8quhelcbobtsapssfs5qb30r.apps.googleusercontent.com'
+    };
+    // Don't auto-save yet, just pre-fill
   }
+
+  document.getElementById('ga4-prop-id').value = settings.propId;
+  document.getElementById('ga4-client-id').value = settings.clientId;
 
   if (await DataManager.hasData()) {
     document.getElementById('setup-portal').classList.add('hidden');
