@@ -612,14 +612,20 @@
         if (!email) return;
 
         const isTrialRow = discValue.toLowerCase() === 'free';
-        const isPaidRow = !discValue && subTotal > 0;
+        const isPaidRow = subTotal > 0;
 
         if (trialCohort.has(email)) {
           if (isPaidRow) trialCohort.get(email).paidMonths++;
         } else {
           // Track standard member payments for benchmarking
-          if (!benchHistory[email]) benchHistory[email] = { paidMonths: 0 };
-          if (isPaidRow) benchHistory[email].paidMonths++;
+          if (!benchHistory[email]) benchHistory[email] = { paidMonths: 0, firstPayment: null };
+          if (isPaidRow) {
+            benchHistory[email].paidMonths++;
+            const pd = new Date(row['Date']);
+            if (!isNaN(pd) && (!benchHistory[email].firstPayment || pd < benchHistory[email].firstPayment)) {
+              benchHistory[email].firstPayment = pd;
+            }
+          }
         }
       });
       
@@ -630,20 +636,21 @@
       accountsData.forEach(row => {
         const email = (row['Email'] || '').toLowerCase().trim();
         if (email) {
-          const method = (row['Billing Method'] || '').trim();
+          const method = (row['Billing Method'] || '').toLowerCase().trim();
           
           let statusLabel = 'Active';
           let isCancelled = false;
           let isDropped = false;
           
-          if (method === 'Cancelled') {
+          // Case-insensitive checks for robustness
+          if (method.includes('cancelled') || method.includes('canceled')) {
             statusLabel = 'Cancelled';
             isCancelled = true;
-          } else if (!method) {
+          } else if (!method || method === 'undefined' || method === 'null') {
             statusLabel = 'Dropped Off';
             isCancelled = true;
             isDropped = true;
-          } else if (method === 'Monthly') {
+          } else {
             statusLabel = 'Active';
             isCancelled = false;
           }
@@ -678,48 +685,64 @@
         }
       });
 
+      // 3.5 Calculate Member Age (months since signup) for all users
+      const now = new Date();
+      for (const email in accountsMap) {
+        const acc = accountsMap[email];
+        const startStr = acc.joinDateStr !== 'Unknown' ? acc.joinDateStr : (acc.trialInfo?.date);
+        let signup = new Date(startStr);
+        // If join date fails to parse, fall back to first payment date from financial data
+        if (isNaN(signup) && !acc.isTrial && benchHistory[email]?.firstPayment) {
+          signup = benchHistory[email].firstPayment;
+        }
+        acc.ageMonths = !isNaN(signup) ? (now - signup) / (1000 * 60 * 60 * 24 * 30.44) : 0;
+      }
+
       // 4. Trial KPIs & Funnel Analysis
-      let leads = 0;
-      let matched = 0;
+      let leadsBefore = 0;
+      let matchedBefore = 0;
+      let leadsTrialPeriod = 0;
+      let matchedTrial = 0;
+
       const history = {};
 
       jotformData.forEach(sub => {
         const email = (sub.answers?.['36']?.answer || sub.answers?.['36'] || '').toLowerCase().trim();
         if (!email) return;
-        leads++;
+
         const createdAt = new Date((sub.created_at || '').replace(' ', 'T'));
         if (isNaN(createdAt)) return;
         
         const mKey = createdAt.toISOString().substring(0, 7);
         if (!history[mKey]) history[mKey] = { leads: 0, matched: 0 };
         history[mKey].leads++;
+
+        if (createdAt < TRIAL_START_DATE) {
+          leadsBefore++;
+          if (accountsMap[email] && !accountsMap[email].isTrial) matchedBefore++;
+        } else {
+          leadsTrialPeriod++;
+          if (trialCohort.has(email)) matchedTrial++;
+        }
+
         if (accountsMap[email]) {
-          matched++;
           history[mKey].matched++;
         }
       });
 
-      let trialTotal = trialCohort.size;
-      let trialActive = 0;
-      let trialCancelled = 0;
-      let trialNaN = 0;
+      const trialTotal = trialCohort.size;
       const trialList = [];
       const standardList = [];
 
       for (const email in accountsMap) {
         const acc = accountsMap[email];
         if (acc.isTrial) {
-          if (acc.statusLabel === 'Active') trialActive++;
-          else if (acc.statusLabel === 'Cancelled') trialCancelled++;
-          else if (acc.statusLabel === 'Dropped Off') trialNaN++;
-
           trialList.push({
             ...acc,
             type: acc.trialInfo.tier,
             paidMonths: acc.trialInfo.paidMonths
           });
         } else {
-          // Standard Members List for benchmarking
           standardList.push({
             ...acc,
             paidMonths: benchHistory[email]?.paidMonths || 0
@@ -727,13 +750,16 @@
         }
       }
 
-      globalTrialList = trialList;
-      globalStandardList = standardList;
-
       // 5. Update UI
-      document.getElementById('f-leads').textContent = leads;
-      document.getElementById('f-converted').textContent = matched;
-      document.getElementById('f-rate').textContent = (leads ? Math.round(matched/leads*100) : 0) + '%';
+      const trialActive = trialList.filter(u => u.statusLabel === 'Active').length;
+      const trialCancelled = trialList.filter(u => u.statusLabel === 'Cancelled').length;
+      const trialNaN = trialList.filter(u => u.statusLabel === 'Dropped Off').length;
+
+      document.getElementById('f-leads').textContent = leadsBefore + leadsTrialPeriod;
+      document.getElementById('f-converted').textContent = matchedBefore + matchedTrial;
+      
+      const overallRate = (leadsBefore + leadsTrialPeriod) ? Math.round((matchedBefore + matchedTrial) / (leadsBefore + leadsTrialPeriod) * 100) : 0;
+      document.getElementById('f-rate').textContent = overallRate + '%';
 
       document.getElementById('t-signups').textContent = trialTotal;
       document.getElementById('t-active').textContent = trialActive;
@@ -743,7 +769,6 @@
       const retentionCohort = trialTotal ? Math.round(trialActive/trialTotal * 100) : 0;
       document.getElementById('t-retention-cohort').textContent = retentionCohort + '%';
       
-      // Dynamic subtitle update to avoid hardcoded deception
       const cohortCard = document.getElementById('t-retention-cohort').closest('.metric-card');
       cohortCard.querySelector('.metric-sub').textContent = `${trialActive} / ${trialTotal} Total`;
       
@@ -751,25 +776,19 @@
       const retentionOptimistic = denominatorOptimistic ? Math.round(trialActive/denominatorOptimistic*100) : 0;
       document.getElementById('t-ret-optimistic').textContent = `${retentionOptimistic}% conversion (if billed)`;
       
-      let histSample = 0;
-      let histActive = 0;
-      for (const email in accountsMap) {
-        if (!accountsMap[email].isTrial) {
-          histSample++;
-          if (!accountsMap[email].isCancelled) histActive++;
-        }
-      }
-      const histRetention = histSample ? Math.round(histActive/histSample*100) : 0;
+      const histRetention = standardList.length ? Math.round(standardList.filter(u => !u.isCancelled).length / standardList.length * 100) : 0;
       document.getElementById('t-churn-hist').textContent = (100 - histRetention) + '%';
 
-      const overallRate = leads ? matched/leads*100 : 0;
+      const baselineRate = leadsBefore ? (matchedBefore / leadsBefore * 100) : 10; // Fallback if no before data
+      const trialOfferRate = leadsTrialPeriod ? (matchedTrial / leadsTrialPeriod * 100) : 0;
       
-      renderFunnelImpact(overallRate * 0.85, overallRate);
+      renderFunnelImpact(baselineRate, trialOfferRate);
       renderTimeline(history);
       
-      // Default to 3-month view
+      globalTrialList = trialList;
+      globalStandardList = standardList;
+
       updateRetentionView(3);
-      
       renderTable(trialList.sort((a,b) => b.paidMonths - a.paidMonths).slice(0, 100));
 
       document.getElementById('dashboard-results').style.display = 'block';
@@ -783,28 +802,39 @@
         event.target.classList.add('active');
       }
 
-      const now = new Date();
-      // Only include people whose tenure is >= numMonths
-      const tEligible = globalTrialList.filter(u => {
-        const signup = new Date(u.joinDateStr);
-        return !isNaN(signup) && ((now - signup) / (1000 * 60 * 60 * 24 * 30.44)) >= (numMonths - 1);
-      });
-
-      const sEligible = globalStandardList.filter(u => {
-        const signup = new Date(u.joinDateStr);
-        return !isNaN(signup) && ((now - signup) / (1000 * 60 * 60 * 24 * 30.44)) >= (numMonths - 1);
-      });
-
-      const trialSurvival = new Array(numMonths).fill(0);
-      const standardSurvival = new Array(numMonths).fill(0);
+      const trialSurvival = [];
+      const standardSurvival = [];
+      
+      let tDenomTotal = 0;
+      let sDenomTotal = 0;
 
       for (let i = 0; i < numMonths; i++) {
-        trialSurvival[i] = tEligible.length ? Math.round(tEligible.filter(u => u.paidMonths >= i).length / tEligible.length * 100) : 100;
-        standardSurvival[i] = sEligible.length ? Math.round(sEligible.filter(u => u.paidMonths >= i).length / sEligible.length * 100) : 100;
+        // Month Index is i+1
+        const monthNum = i + 1;
+        
+        // Denominator: People who HAVE enough data for this specific month
+        // Trial: month 1 is free, so need ageMonths >= monthNum - 1
+        // Standard: no free month, so need ageMonths >= monthNum
+        const tEligible = globalTrialList.filter(u => u.ageMonths >= (monthNum - 1));
+        const sEligible = globalStandardList.filter(u => u.ageMonths >= monthNum);
+
+        if (i === 0) {
+          tDenomTotal = tEligible.length;
+          sDenomTotal = sEligible.length;
+        }
+
+        // Numerator:
+        // Trial users: retained in month N if paidMonths >= N-1 (since month 1 is free)
+        // Standard users: retained in month N if paidMonths >= N
+        const tReached = tEligible.filter(u => u.paidMonths >= (monthNum - 1)).length;
+        const sReached = sEligible.filter(u => u.paidMonths >= monthNum).length;
+
+        trialSurvival.push(tEligible.length ? Math.round(tReached / tEligible.length * 100) : 0);
+        standardSurvival.push(sEligible.length ? Math.round(sReached / sEligible.length * 100) : 0);
       }
 
       document.getElementById('retention-subtitle').textContent = 
-        `Analyzing ${tEligible.length} Trial Users vs. ${sEligible.length} Standard members with at least ${numMonths} months of history.`;
+        `Comparing ${tDenomTotal} Trial vs. ${sDenomTotal} Standard members. Rates calculated using only cohorts with sufficient longevity for each point.`;
 
       renderRetentionChart(trialSurvival, standardSurvival, numMonths);
     }
@@ -816,17 +846,20 @@
       currentCharts.impact = new Chart(document.getElementById('chart-funnel-impact'), {
         type: 'bar',
         data: {
-          labels: ['Before Trial', 'With Free Trial'],
+          labels: ['Before Trial (Baseline)', 'Trial-Only Path'],
           datasets: [{
-            data: [pre, post],
+            data: [pre.toFixed(1), post.toFixed(1)],
             backgroundColor: ['#eee', '#1D9E75'],
             borderRadius: 6
           }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, ticks: { callback: v => v + '%' } }, x: { grid: { display: false } } }
+          plugins: { 
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label || ''} ${ctx.raw}% conv.` } }
+          },
+          scales: { y: { beginAtZero: true, max: Math.max(pre, post) + 5, ticks: { callback: v => v + '%' } }, x: { grid: { display: false } } }
         }
       });
     }

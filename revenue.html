@@ -533,9 +533,9 @@
       for (const [name, t] of Object.entries(tiers)) {
         if (t.count === 0) continue;
         const r = pct(t.active, t.count);
-        const gap = t.pot - t.actual;
+        const monthlyGap = (t.count - t.active) * t.price; // monthly recurring shortfall from churned members
         const barColor = r >= 60 ? 'ret-green' : r >= 40 ? 'ret-amber' : 'ret-red';
-        
+
         tierHtml += `<tr>
           <td><b>${name}</b> <span style="color:#888;font-size:10px;">($${t.price})</span></td>
           <td>${t.count}</td>
@@ -544,7 +544,7 @@
           <td>
             <div class="ret-bar-wrap"><div class="ret-bar-fill ${barColor}" style="width:${r}%"></div></div>
           </td>
-          <td class="text-coral">${cur(gap)}</td>
+          <td class="text-coral">${cur(monthlyGap)}/mo</td>
         </tr>`;
       }
       document.getElementById('tier-breakdown-body').innerHTML = tierHtml;
@@ -587,50 +587,44 @@
       // 5b. YoY Comparison Table (All Data)
       const allMembers = new Map();
       const nowJoin = new Date();
-      
-      // Build a full member map to join financial and account data
-      accountsData.forEach(row => {
-        const email = (row['Email'] || '').toLowerCase().trim();
-        const dateStr = row['Join Date'] || row['Date'];
-        const date = new Date(dateStr);
-        if (!email || isNaN(date)) return;
-        
-        let tier = 'Public'; let price = 5.50;
-        if (String(row['ATNS Physicians']).toLowerCase().includes('yes')) { tier = 'Physicians'; price = 19.50; }
-        else if (String(row['ATNS Clinicians']).toLowerCase().includes('yes')) { tier = 'Clinicians'; price = 13.00; }
-        else if (String(row['ATNS Early Career']).toLowerCase().includes('yes')) { tier = 'Early Career'; price = 7.50; }
-        else if (String(row['ATNS Public']).toLowerCase().includes('yes')) { tier = 'Public'; price = 5.50; }
 
-        const billing = (row['Billing Method'] || '').trim();
-        const isActive = billing && !billing.toLowerCase().includes('cancelled');
-        
-        const mDiff = (nowJoin.getFullYear() - date.getFullYear()) * 12 + (nowJoin.getMonth() - date.getMonth());
-
-        allMembers.set(email, {
-          email, date, tier, price, isActive,
-          actual: 0, pot: Math.max(0, mDiff) * price
-        });
-      });
-
+      // Step 1: Use financial data to establish first-payment date per member (most reliable)
       financialData.forEach(row => {
         const email = (row['Email'] || '').toLowerCase().trim();
         const amt = parseFloat(row['Membership Sub-Total']) || 0;
-        if (allMembers.has(email) && amt > 0) {
-          allMembers.get(email).actual += amt;
+        const date = new Date(row['Date']);
+        if (!email || isNaN(date) || amt <= 0) return;
+        if (!allMembers.has(email) || date < allMembers.get(email).date) {
+          allMembers.set(email, { email, date, tier: 'Public', price: 5.50, isActive: false, actual: 0 });
         }
+        allMembers.get(email).actual += amt;
       });
 
-      const yoy = {}; // monthIndex -> { year -> { members, active, actual, pot } }
+      // Step 2: Overlay accounts data for tier and active status
+      accountsData.forEach(row => {
+        const email = (row['Email'] || '').toLowerCase().trim();
+        if (!email || !allMembers.has(email)) return;
+        const m = allMembers.get(email);
+
+        if (String(row['ATNS Physicians']).toLowerCase().includes('yes')) { m.tier = 'Physicians'; m.price = 19.50; }
+        else if (String(row['ATNS Clinicians']).toLowerCase().includes('yes')) { m.tier = 'Clinicians'; m.price = 13.00; }
+        else if (String(row['ATNS Early Career']).toLowerCase().includes('yes')) { m.tier = 'Early Career'; m.price = 7.50; }
+        else if (String(row['ATNS Public']).toLowerCase().includes('yes')) { m.tier = 'Public'; m.price = 5.50; }
+
+        const billing = (row['Billing Method'] || '').trim();
+        m.isActive = billing && !billing.toLowerCase().includes('cancelled');
+      });
+
+      const yoy = {}; // monthIndex -> { year -> { members, active, churnedRevMonth } }
       allMembers.forEach(m => {
         const mIdx = m.date.getMonth();
         const year = m.date.getFullYear();
         if (!yoy[mIdx]) yoy[mIdx] = {};
-        if (!yoy[mIdx][year]) yoy[mIdx][year] = { members: 0, active: 0, actual: 0, pot: 0 };
+        if (!yoy[mIdx][year]) yoy[mIdx][year] = { members: 0, active: 0, churnedRevMonth: 0 };
         const yd = yoy[mIdx][year];
         yd.members++;
         if (m.isActive) yd.active++;
-        yd.actual += m.actual;
-        yd.pot += m.pot;
+        else yd.churnedRevMonth += m.price; // monthly rev gap per churned member
       });
 
       let yoyHtml = '';
@@ -641,9 +635,8 @@
         years.forEach((year, i) => {
           const d = yoy[mIdx][year];
           const r = pct(d.active, d.members);
-          const gap = d.pot - d.actual;
           const barColor = r >= 60 ? 'ret-green' : r >= 40 ? 'ret-amber' : 'ret-red';
-          
+
           yoyHtml += `<tr>
             <td>${i === 0 ? `<b>${monthNames[mIdx]}</b>` : ''}</td>
             <td>${year}</td>
@@ -653,7 +646,7 @@
             <td>
               <div class="ret-bar-wrap"><div class="ret-bar-fill ${barColor}" style="width:${r}%"></div></div>
             </td>
-            <td class="text-coral">${cur(gap)}</td>
+            <td class="text-coral">${cur(d.churnedRevMonth)}/mo</td>
           </tr>`;
         });
       });
