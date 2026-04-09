@@ -8,6 +8,7 @@ const DataManager = {
     JOTFORM: 'dashboard_jotform_data',
     ACCOUNTS: 'dashboard_accounts_data',
     FINANCIAL: 'dashboard_financial_data',
+    GA4_SETTINGS: 'dashboard_ga4_settings',
     LAST_UPLOAD: 'dashboard_last_upload_meta'
   },
 
@@ -178,6 +179,97 @@ const DataManager = {
         'Membership Sub-Total': parseFloat(row[findKey(['Membership Sub-Total', 'Sub-Total'])]) || 0
       };
     });
+  },
+
+  /**
+   * GA4 API Methods
+   */
+  async getGA4Data(forceRefresh = false) {
+    const settings = await this.loadData(this.KEYS.GA4_SETTINGS);
+    if (!settings || !settings.propId || !settings.clientId) {
+      console.warn("GA4 settings missing.");
+      return null;
+    }
+
+    // Check if we already have valid data in IndexedDB
+    const cached = await this.loadData('ga4_traffic_cache');
+    if (cached && !forceRefresh) {
+      const now = new Date().getTime();
+      if (now - (cached.timestamp || 0) < 3600000) { // 1 hour cache
+        return cached.data;
+      }
+    }
+
+    try {
+      const token = await this._authorize(settings.clientId);
+      const data = await this._queryGA4(settings.propId, token);
+      
+      // Cache for 1 hour
+      await this.saveData('ga4_traffic_cache', { data, timestamp: new Date().getTime() });
+      return data;
+    } catch (err) {
+      console.error("GA4 Fetch failed:", err);
+      throw err;
+    }
+  },
+
+  /**
+   * Internal OAuth2 token request
+   */
+  _authorize(clientId) {
+    return new Promise((resolve, reject) => {
+      if (typeof google === 'undefined') {
+        reject(new Error("Google Identity Services script not loaded."));
+        return;
+      }
+
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/analytics.readonly',
+        callback: (response) => {
+          if (response.error) {
+            reject(response);
+          } else {
+            resolve(response.access_token);
+          }
+        },
+      });
+      client.requestAccessToken({ prompt: '' });
+    });
+  },
+
+  /**
+   * Internal API Query
+   */
+  async _queryGA4(propertyId, token) {
+    const url = `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`;
+    
+    const body = {
+      dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'date' }],
+      metrics: [
+        { name: 'sessions' },
+        { name: 'engagedSessions' },
+        { name: 'activeUsers' },
+        { name: 'screenPageViews' }
+      ]
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error?.message || "GA4 API Error");
+    }
+
+    return await response.json();
   }
 };
 

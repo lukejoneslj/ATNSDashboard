@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <script src="js/data-manager.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -118,6 +119,24 @@
     }
     .setup-btn:hover { background: #333; }
     
+    .setup-divider {
+      width: 100%; height: 1px; background: #eee; margin: 12px 0; position: relative;
+    }
+    .setup-divider::after {
+      content: "OR"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      background: #fdfdfd; padding: 0 8px; font-size: 10px; color: #aaa; font-weight: 600;
+    }
+
+    .ga4-setup {
+      margin-top: 24px; text-align: left; border-top: 1px solid #eee; padding-top: 20px;
+    }
+    .ga4-setup label { font-size: 11px; font-weight: 600; color: #555; display: block; margin-bottom: 4px; }
+    .ga4-input {
+      width: 100%; padding: 8px 10px; border: 1px solid #eee; border-radius: 6px; font-size: 12px;
+      margin-bottom: 12px; font-family: 'DM Mono', monospace;
+    }
+    .ga4-input:focus { outline: none; border-color: #1D9E75; }
+
     .setup-btn.secondary {
       background: transparent;
       color: #111;
@@ -126,7 +145,7 @@
     .setup-btn.secondary:hover {
       background: #f4f4f4;
     }
-    #file-jotform { display: none; }
+    #file-jotform, #file-accounts, #file-financial { display: none; }
 
     /* ── LOADER ── */
     #loader {
@@ -369,6 +388,39 @@
       <p class="subtitle">Form analytics · ID 232155926573057 · Neuroplastic symptom assessment</p>
     </div>
     <div class="header-actions">
+      <div id="setup-portal">
+        <div class="setup-card" style="max-width: 440px;">
+          <div class="setup-title">Dashboard Setup</div>
+          <p class="setup-desc">Upload your data exports to initialize the analytics.</p>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+            <button class="setup-btn" onclick="document.getElementById('file-jotform').click()">Upload JotForm CSV</button>
+            <button class="setup-btn" onclick="document.getElementById('file-accounts').click()">Upload Accounts CSV</button>
+          </div>
+          <button class="setup-btn secondary" onclick="document.getElementById('file-financial').click()" style="margin-bottom: 24px;">Upload Financial CSV</button>
+
+          <div class="ga4-setup">
+            <div class="setup-title" style="font-size: 14px; margin-bottom: 4px;">Top of Funnel (GA4)</div>
+            <p class="setup-desc" style="margin-bottom: 16px;">Connect Google Analytics for traffic & session data.</p>
+            
+            <label>GA4 Property ID</label>
+            <input type="text" id="ga4-prop-id" class="ga4-input" placeholder="e.g. 470987705" value="470987705">
+            
+            <label>OAuth Client ID</label>
+            <input type="text" id="ga4-client-id" class="ga4-input" placeholder="xxx.apps.googleusercontent.com">
+            
+            <label>API Key</label>
+            <input type="password" id="ga4-api-key" class="ga4-input" placeholder="AIzaSy...">
+
+            <button class="setup-btn" onclick="saveGA4Settings()" style="background: #1D9E75;">Save GA4 Config & Continue</button>
+            <button class="setup-btn secondary" onclick="document.getElementById('setup-portal').classList.add('hidden')">Skip for now</button>
+          </div>
+
+          <input type="file" id="file-jotform" accept=".csv" onchange="handleFile(this, 'jotform')">
+          <input type="file" id="file-accounts" accept=".csv" onchange="handleFile(this, 'accounts')">
+          <input type="file" id="file-financial" accept=".csv" onchange="handleFile(this, 'financial')">
+        </div>
+      </div>
       <div class="status-pill"><div class="status-dot"></div> Local Data</div>
       <button class="refresh-btn" onclick="if(confirm('Clear all stored data?')) { DataManager.clearAll(); location.reload(); }">
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 1 0 21.99 12"/></svg>
@@ -379,31 +431,48 @@
 
   <!-- KPIs -->
   <p class="section-heading">Overview</p>
-  <div class="kpi-grid">
-    <div class="metric-card">
-      <p class="metric-label">Total Submissions</p>
-      <p class="metric-value" id="count-total">—</p>
-      <p class="metric-sub" id="count-recent">— recent</p>
+    <div class="kpi-grid">
+      <div class="metric-card">
+        <p class="metric-label">Total Submissions</p>
+        <div class="metric-value" id="count-total">0</div>
+      </div>
+      <div class="metric-card">
+        <p class="metric-label">Submissions (30d)</p>
+        <div class="metric-value" id="count-recent">0</div>
+      </div>
+      <div class="metric-card">
+        <p class="metric-label">Avg Quiz Score</p>
+        <div class="metric-value"><span id="val-avg">0</span><span class="metric-unit" style="font-size:14px;color:#888;"> / 14</span></div>
+      </div>
+      <div class="metric-card">
+        <p class="metric-label">Website Sessions (30d)</p>
+        <div class="metric-value" id="val-traffic">...</div>
+      </div>
     </div>
-    <div class="metric-card">
-      <p class="metric-label">Avg Score</p>
-      <p class="metric-value" id="val-avg">—</p>
-      <p class="metric-sub">out of 14 possible pts</p>
-    </div>
-    <div class="metric-card">
-      <p class="metric-label">Email Completion</p>
-      <p class="metric-value" id="val-rate">—</p>
-      <p class="metric-sub">of sampled submissions</p>
-    </div>
-    <div class="metric-card">
-      <p class="metric-label">Last Submission</p>
-      <p class="metric-value" id="kpi-last" style="font-size:15px;padding-top:4px">—</p>
-      <p class="metric-sub" id="kpi-since">—</p>
-    </div>
-  </div>
 
   <!-- Charts row 1 -->
   <p class="section-heading">Response Analytics</p>
+    <div class="chart-grid-top">
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <div>
+            <div class="chart-card-title">Submission Timeline</div>
+            <div class="chart-card-sub">Daily quiz completions over time</div>
+          </div>
+        </div>
+        <div class="chart-wrap" style="height: 250px;"><canvas id="chart-timeline"></canvas></div>
+      </div>
+      <div class="chart-card" id="container-traffic" style="display: none;">
+        <div class="chart-card-header">
+          <div>
+            <div class="chart-card-title">Website Traffic</div>
+            <div class="chart-card-sub">Sessions vs Engaged (GA4)</div>
+          </div>
+        </div>
+        <div class="chart-wrap" style="height: 250px;"><canvas id="chart-traffic"></canvas></div>
+      </div>
+    </div>
+
   <div class="chart-grid-top">
     <div class="chart-card">
       <div class="chart-card-header">
@@ -490,153 +559,174 @@
 </div><!-- .page-body -->
 
 <script>
+/* ── GLOBALS ── */
 Chart.defaults.color       = '#999';
 Chart.defaults.borderColor = 'rgba(0,0,0,0.06)';
 Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 Chart.defaults.font.size   = 11;
 
 let charts = {};
+const GREEN = '#1D9E75', BLUE = '#3B82F6', AMBER = '#F59E0B', RED = '#EF4444', GRID = '#f0f0f0';
 
-/* ── SETUP PORTAL HTML ── */
-const portalHTML = `
-<div id="setup-portal">
-  <div class="setup-card" style="max-width: 480px;">
-    <div class="setup-title">Symptomatic Data Portal</div>
-    <div class="setup-desc">Upload your CSV exports to populate the dashboard. Data is stored locally in your browser.</div>
-    
-    <div style="text-align: left; margin-bottom: 20px;">
-      <div style="margin-bottom: 12px;">
-        <label style="display:block; font-size:10px; color:#999; text-transform:uppercase; margin-bottom:4px; font-weight:700;">1. JotForm Quiz Data (Required for all charts)</label>
-        <input type="file" id="file-jotform-csv" accept=".csv" style="font-size:12px;">
-      </div>
-      
-      <div style="margin-bottom: 12px;">
-        <label style="display:block; font-size:10px; color:#999; text-transform:uppercase; margin-bottom:4px; font-weight:700;">2. Accounts CSV (Required for Membership page)</label>
-        <input type="file" id="file-accounts-csv" accept=".csv" style="font-size:12px;">
-      </div>
-      
-      <div style="margin-bottom: 12px;">
-        <label style="display:block; font-size:10px; color:#999; text-transform:uppercase; margin-bottom:4px; font-weight:700;">3. Financial CSV (Required for Trial Analytics)</label>
-        <input type="file" id="file-financial-csv" accept=".csv" style="font-size:12px;">
-      </div>
-    </div>
+/* ── HELPERS ── */
+const fmt = (n) => Number(n).toLocaleString();
+const pct = (val, total) => total ? Math.round((val / total) * 100) : 0;
+const scoreClass = s => s >= 10 ? 'high' : s >= 6 ? 'mid' : 'low';
+const shortQ = q => {
+  const map = { '3':'Diag','34':'Organ','4':'Mult','7':'Stress','8':'Crit','9':'Child','10':'Recent','11':'Depr','12':'Traum','40':'Anx','35':'Move' };
+  return map[q] || shortQ_long(q);
+}
+const shortQ_long = q => ({ '3':'No Dx','4':'>6mo Mult','7':'Stress+','8':'Crit','9':'Child','10':'Recent','11':'Depr','12':'Traum','40':'Anx','35':'Roaming' }[q] || 'Q'+q);
 
-    <button class="setup-btn" onclick="handleUnifiedUpload()">
-      Upload & Launch Dashboard
-    </button>
-    
-    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #efefef;">
-      <p style="font-size: 11px; color: #999; margin-bottom: 8px;">Want to clear existing data?</p>
-      <button class="setup-btn secondary" style="font-size: 11px; padding: 8px;" onclick="if(confirm('Clear all stored data?')) { DataManager.clearAll(); window.location.reload(); }">
-        Clear & Reset Dashboard
-      </button>
-    </div>
-
-    <div style="margin-top:20px; font-size:10px; color:#bbb; text-transform:uppercase; letter-spacing:1px;">
-      Association for the Treatment of Neuroplastic Symptoms
-    </div>
-  </div>
-</div>
-`;
-document.body.insertAdjacentHTML('afterbegin', portalHTML);
-
-/* ── helpers ── */
-function fmt(n) { return Number(n).toLocaleString(); }
-function pct(a, b) { return b ? Math.round(a / b * 100) : 0; }
-
-function getAnswer(sub, qid) {
+const getAnswer = (sub, qid) => {
   const raw = sub.answers?.[qid];
   if (raw == null) return null;
   if (typeof raw === 'string') return raw;
-  if (typeof raw === 'object') return raw.answer ?? null;
-  return String(raw);
-}
+  return raw.answer ?? String(raw);
+};
 
-function animateCount(el, to) {
+function animateCount(el, target) {
+  let curr = 0;
   const start = Date.now(), dur = 800;
   function step() {
     const p = Math.min((Date.now() - start) / dur, 1);
     const ease = 1 - Math.pow(1 - p, 3);
-    el.textContent = fmt(Math.round(to * ease));
+    el.textContent = fmt(Math.round(target * ease));
     if (p < 1) requestAnimationFrame(step);
-    else el.textContent = fmt(to);
+    else el.textContent = fmt(target);
   }
   requestAnimationFrame(step);
 }
 
-function timeAgo(dateStr) {
-  const diff = Date.now() - new Date(dateStr.replace(' ', 'T') + 'Z').getTime();
-  const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
-  if (m < 60)  return m + 'm ago';
-  if (h < 24)  return h + 'h ago';
-  if (d < 30)  return d + 'd ago';
-  return Math.floor(d / 30) + 'mo ago';
+/* ── FILE HANDLING ── */
+async function handleFile(input, type) {
+  const file = input.files[0];
+  if (!file) return;
+  const btn = input.previousElementSibling;
+  btn.textContent = '✓ ' + file.name.substring(0, 15) + '...';
+  btn.style.borderColor = '#1D9E75';
+  btn.style.color = '#1D9E75';
 }
 
-function scoreClass(n) {
-  if (n >= 10) return 'high';
-  if (n >= 7)  return 'mid';
-  return 'low';
+async function saveGA4Settings() {
+  const propId = document.getElementById('ga4-prop-id').value;
+  const clientId = document.getElementById('ga4-client-id').value;
+  const apiKey = document.getElementById('ga4-api-key').value;
+  
+  if (clientId && apiKey && propId) {
+    const settings = { propId, clientId, apiKey };
+    await DataManager.saveData(DataManager.KEYS.GA4_SETTINGS, settings);
+  }
+  
+  await handleUnifiedUpload();
 }
 
-function shortQ(qid) {
-  return {
-    '3':  'No diagnosis found',
-    '4':  '>6mo multiple symptoms',
-    '7':  'Stress worsens symptoms',
-    '8':  'Perfectionist/self-critical',
-    '9':  'Childhood stressors present',
-    '10': 'Recent significant stress',
-    '11': 'Depressed/low interest',
-    '12': 'Post-traumatic onset',
-    '34': 'No improvement expected',
-    '35': 'Roaming/multiple sites',
-    '40': 'Anxious/nervous recently',
-  }[qid] || 'Q' + qid;
+async function handleUnifiedUpload() {
+  const fJot = document.getElementById('file-jotform').files[0];
+  const fAcc = document.getElementById('file-accounts').files[0];
+  const fFin = document.getElementById('file-financial').files[0];
+
+  const hasStoredData = await DataManager.hasData();
+  if (!fJot && !hasStoredData) {
+    alert("Please upload at least the JotForm CSV to get started.");
+    return;
+  }
+
+  document.getElementById('setup-portal').classList.add('hidden');
+  document.getElementById('loader').classList.remove('hidden');
+  document.querySelector('.loader-text').textContent = 'Processing data...';
+
+  const parseFile = (file) => {
+    return new Promise((resolve) => {
+      if (!file) resolve(null);
+      Papa.parse(file, { header: true, skipEmptyLines: true, complete: (res) => resolve(res.data) });
+    });
+  };
+
+  try {
+    const [jotRaw, accRaw, finRaw] = await Promise.all([parseFile(fJot), parseFile(fAcc), parseFile(fFin)]);
+    if (jotRaw) await DataManager.saveData(DataManager.KEYS.JOTFORM, DataManager.mapJotFormCSV(jotRaw));
+    if (accRaw) await DataManager.saveData(DataManager.KEYS.ACCOUNTS, DataManager.mapAccountsCSV(accRaw));
+    if (finRaw) await DataManager.saveData(DataManager.KEYS.FINANCIAL, DataManager.mapFinancialCSV(finRaw));
+    location.reload(); 
+  } catch (err) {
+    console.error(err);
+    alert("Error processing files.");
+    document.getElementById('setup-portal').classList.remove('hidden');
+  }
 }
 
-/* ── fetch ── */
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.json();
-}
+/* ── DASHBOARD RENDERING ── */
+async function renderDashboard(data) {
+  const loader = document.getElementById('loader');
+  const root   = document.getElementById('root');
+  
+  animateCount(document.getElementById('count-total'), data.length);
+  
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const recentData = data.filter(s => new Date((s.created_at || '').replace(' ','T')) > thirtyDaysAgo);
+  animateCount(document.getElementById('count-recent'), recentData.length);
+  
+  const scores = data.map(s => parseInt(getAnswer(s, '50'))).filter(n => !isNaN(n));
+  const avg = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : 0;
+  document.getElementById('val-avg').textContent = avg;
 
-/* ── charts ── */
-const GRID   = 'rgba(0,0,0,0.05)';
-const GREEN  = '#1D9E75';
-const AMBER  = '#E9A228';
-const RED    = '#D85A30';
-const BLUE   = '#378ADD';
+  // Fetch GA4
+  try {
+    const ga4Data = await DataManager.getGA4Data();
+    if (ga4Data) {
+      document.getElementById('container-traffic').style.display = 'block';
+      buildTrafficChart(ga4Data);
+      
+      const totalSessions = ga4Data.rows.reduce((acc, row) => acc + parseInt(row.metricValues[0].value), 0);
+      animateCount(document.getElementById('val-traffic'), totalSessions);
+    }
+  } catch (e) {
+    console.error("Traffic fetch skipped/failed", e);
+    document.getElementById('val-traffic').textContent = '—';
+  }
+
+  buildTimelineChart(data);
+  buildScoreChart(data);
+  buildQ14Chart(data);
+  buildYesRateChart(data);
+  buildTable(data);
+
+  loader.classList.add('hidden');
+  root.style.opacity = '1';
+}
 
 function buildScoreChart(data) {
-  if (charts.scores) charts.scores.destroy();
-  const counts = {};
-  for (let i = 3; i <= 14; i++) counts[i] = 0;
+  if (charts.score) charts.score.destroy();
+  const buckets = { '0-3':0, '4-6':0, '7-9':0, '10-12':0, '13-14':0 };
   data.forEach(s => {
     const sc = parseInt(getAnswer(s, '50'));
-    if (sc >= 3 && sc <= 14) counts[sc]++;
-  });
-  const labels = Object.keys(counts);
-  const values = Object.values(counts);
-  const colors = labels.map(l => {
-    const n = parseInt(l);
-    if (n >= 11) return RED;
-    if (n >= 8)  return AMBER;
-    return GREEN;
+    if (sc <= 3) buckets['0-3']++;
+    else if (sc <= 6) buckets['4-6']++;
+    else if (sc <= 9) buckets['7-9']++;
+    else if (sc <= 12) buckets['10-12']++;
+    else buckets['13-14']++;
   });
 
-  charts.scores = new Chart(document.getElementById('chart-scores'), {
+  charts.score = new Chart(document.getElementById('chart-scores'), {
     type: 'bar',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors.map(c => c + '33'), borderColor: colors, borderWidth: 1.5, borderRadius: 4, borderSkipped: false }] },
+    data: {
+      labels: Object.keys(buckets),
+      datasets: [{
+        data: Object.values(buckets),
+        backgroundColor: [GREEN + '33', BLUE + '33', AMBER + '33', RED + '33', '#1111111a'],
+        borderColor:     [GREEN, BLUE, AMBER, RED, '#111'],
+        borderWidth: 1.5, borderRadius: 4
+      }]
+    },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} submissions` } } },
+      plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: '#999' }, title: { display: true, text: 'Score', color: '#bbb', font: { size: 10 } } },
+        x: { grid: { display: false }, ticks: { color: '#999' } },
         y: { grid: { color: GRID }, ticks: { color: '#999', precision: 0 } }
-      },
-      animation: { duration: 600 }
+      }
     }
   });
 }
@@ -656,19 +746,16 @@ function buildQ14Chart(data) {
       datasets: [{
         data: Object.values(counts),
         backgroundColor: [GREEN + '99', BLUE + '99', AMBER + '99', RED + '99'],
-        borderColor: [GREEN, BLUE, AMBER, RED],
-        borderWidth: 1.5,
-        hoverOffset: 6
+        borderColor:     [GREEN, BLUE, AMBER, RED],
+        borderWidth: 1.5, hoverOffset: 6
       }]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      cutout: '60%',
+      responsive: true, maintainAspectRatio: false, cutout: '60%',
       plugins: {
-        legend: { position: 'bottom', labels: { padding: 12, color: '#666', usePointStyle: true, pointStyleWidth: 7, font: { size: 11 } } },
+        legend: { position: 'bottom', labels: { padding: 12, color: '#666', usePointStyle: true, pointStyleWidth: 7, font: { size: 10 } } },
         tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw} (${pct(ctx.raw, data.length)}%)` } }
-      },
-      animation: { duration: 600 }
+      }
     }
   });
 }
@@ -679,7 +766,7 @@ function buildYesRateChart(data) {
   const yesRates = qids.map(qid => {
     const answers = data.map(s => getAnswer(s, qid)).filter(Boolean);
     if (!answers.length) return 0;
-    return Math.round(answers.filter(a => a === 'Yes').length / answers.length * 100);
+    return Math.round(answers.filter(a => String(a).toLowerCase().includes('yes')).length / answers.length * 100);
   });
 
   charts.yesrate = new Chart(document.getElementById('chart-yesrate'), {
@@ -688,20 +775,18 @@ function buildYesRateChart(data) {
       labels: qids.map(shortQ),
       datasets: [{
         data: yesRates,
-        backgroundColor: yesRates.map(v => v > 80 ? RED + '33' : v > 60 ? AMBER + '33' : GREEN + '33'),
-        borderColor:     yesRates.map(v => v > 80 ? RED : v > 60 ? AMBER : GREEN),
+        backgroundColor: yesRates.map(v => v > 60 ? RED + '33' : v > 40 ? AMBER + '33' : GREEN + '33'),
+        borderColor:     yesRates.map(v => v > 60 ? RED : v > 40 ? AMBER : GREEN),
         borderWidth: 1.5, borderRadius: 3
       }]
     },
     options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw}% answered Yes` } } },
       scales: {
         x: { min: 0, max: 100, grid: { color: GRID }, ticks: { color: '#999', callback: v => v + '%' } },
-        y: { grid: { display: false }, ticks: { color: '#555', font: { size: 11 } } }
-      },
-      animation: { duration: 600 }
+        y: { grid: { display: false }, ticks: { color: '#555', font: { size: 10 } } }
+      }
     }
   });
 }
@@ -722,31 +807,52 @@ function buildTimelineChart(data) {
     data: {
       labels,
       datasets: [{
-        data: values,
-        borderColor: BLUE,
-        borderWidth: 1.5,
-        backgroundColor: BLUE + '12',
-        fill: true,
-        tension: 0.35,
-        pointRadius: values.length < 30 ? 3 : 1.5,
-        pointBackgroundColor: BLUE,
-        pointBorderColor: '#fff',
-        pointBorderWidth: 1.5
+        data: values, borderColor: BLUE, borderWidth: 1.5, backgroundColor: BLUE + '12', fill: true, tension: 0.35,
+        pointRadius: values.length < 30 ? 3 : 1.5, pointBackgroundColor: BLUE, pointBorderColor: '#fff', pointBorderWidth: 1.5
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.raw} submissions` } } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: '#999', maxTicksLimit: 8, maxRotation: 45 } },
+        x: { grid: { display: false }, ticks: { color: '#999', maxTicksLimit: 8 } },
         y: { grid: { color: GRID }, ticks: { color: '#999', precision: 0 }, beginAtZero: true }
-      },
-      animation: { duration: 600 }
+      }
     }
   });
 }
 
-/* ── table ── */
+function buildTrafficChart(ga4) {
+  if (charts.traffic) charts.traffic.destroy();
+  
+  const sortedRows = ga4.rows.sort((a, b) => a.dimensionValues[0].value.localeCompare(b.dimensionValues[0].value));
+  const labels = sortedRows.map(r => {
+    const raw = r.dimensionValues[0].value;
+    return raw.substring(4,6) + '/' + raw.substring(6,8);
+  });
+  const sessions = sortedRows.map(r => parseInt(r.metricValues[0].value));
+  const engaged  = sortedRows.map(r => parseInt(r.metricValues[1].value));
+
+  charts.traffic = new Chart(document.getElementById('chart-traffic'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Sessions', data: sessions, borderColor: BLUE, backgroundColor: BLUE + '12', fill: true, tension: 0.3 },
+        { label: 'Engaged', data: engaged, borderColor: GREEN, fill: false, tension: 0.3, borderDash: [4, 4] }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 10 } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#999', maxTicksLimit: 6 } },
+        y: { grid: { color: GRID }, ticks: { color: '#999' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
 function buildTable(data) {
   const rows = data.slice(0, 20);
   document.getElementById('table-count').textContent = rows.length + ' of ' + data.length + ' shown';
@@ -754,127 +860,40 @@ function buildTable(data) {
     const score = getAnswer(s, '50') || '—';
     const name  = getAnswer(s, '38') || '<span style="color:#ccc">—</span>';
     const email = getAnswer(s, '36') || '<span style="color:#ccc">—</span>';
-    const q3    = getAnswer(s, '3')  === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
-    const q7    = getAnswer(s, '7')  === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
-    const q10   = getAnswer(s, '10') === 'Yes' ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q3    = String(getAnswer(s, '3')).toLowerCase().includes('yes') ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q7    = String(getAnswer(s, '7')).toLowerCase().includes('yes') ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
+    const q10   = String(getAnswer(s, '10')).toLowerCase().includes('yes') ? '<span class="yes-tag">Yes</span>' : '<span class="no-tag">No</span>';
     const q14   = getAnswer(s, '14') || '—';
     const date  = (s.created_at || '').split(' ')[0];
     const sc    = parseInt(score);
-    const badge = isNaN(sc)
-      ? `<span class="score-badge mid">${score}</span>`
-      : `<span class="score-badge ${scoreClass(sc)}">${sc}</span>`;
+    const badge = isNaN(sc) ? `<span class="score-badge mid">${score}</span>` : `<span class="score-badge ${scoreClass(sc)}">${sc}</span>`;
     return `<tr>
-      <td class="name-cell">${name}</td>
-      <td class="email-cell">${email}</td>
-      <td>${badge}</td>
-      <td>${q3}</td>
-      <td>${q7}</td>
-      <td>${q10}</td>
-      <td style="color:#888;">${q14}</td>
-      <td class="date-cell">${date}</td>
+      <td class="name-cell">${name}</td><td class="email-cell">${email}</td><td>${badge}</td>
+      <td>${q3}</td><td>${q7}</td><td>${q10}</td>
+      <td style="color:#888;">${q14}</td><td class="date-cell">${date}</td>
     </tr>`;
   }).join('');
 }
 
-async function handleUnifiedUpload() {
-  const fJot = document.getElementById('file-jotform-csv').files[0];
-  const fAcc = document.getElementById('file-accounts-csv').files[0];
-  const fFin = document.getElementById('file-financial-csv').files[0];
-
-  if (!fJot) {
-    alert("Please at least select the JotForm Quiz CSV.");
-    return;
-  }
-
-  document.getElementById('setup-portal').classList.add('hidden');
-  document.getElementById('loader').classList.remove('hidden');
-  document.querySelector('.loader-text').textContent = 'Processing files...';
-
-  const parseFile = (file) => {
-    return new Promise((resolve) => {
-      if (!file) resolve([]);
-      const headerCounts = {};
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (header) => {
-          if (headerCounts[header] === undefined) {
-            headerCounts[header] = 0;
-            return header;
-          }
-          headerCounts[header]++;
-          return `${header}_${headerCounts[header]}`;
-        },
-        complete: (res) => resolve(res.data)
-      });
-    });
-  };
-
-  try {
-    const [jotRaw, accRaw, finRaw] = await Promise.all([
-      parseFile(fJot),
-      parseFile(fAcc),
-      parseFile(fFin)
-    ]);
-
-    const mappedJot = DataManager.mapJotFormCSV(jotRaw);
-    const mappedAcc = accRaw.length ? DataManager.mapAccountsCSV(accRaw) : [];
-    const mappedFin = finRaw.length ? DataManager.mapFinancialCSV(finRaw) : [];
-    
-    await DataManager.saveData(DataManager.KEYS.JOTFORM, mappedJot);
-    if (mappedAcc.length) await DataManager.saveData(DataManager.KEYS.ACCOUNTS, mappedAcc);
-    if (mappedFin.length) await DataManager.saveData(DataManager.KEYS.FINANCIAL, mappedFin);
-
-    renderDashboard(mappedJot);
-  } catch (err) {
-    console.error(err);
-    alert("Error processing files. Check console.");
-    document.getElementById('setup-portal').classList.remove('hidden');
-  }
-}
-
-// Initial check for data
+// STARTUP
 window.addEventListener('DOMContentLoaded', async () => {
+  const settings = await DataManager.loadData(DataManager.KEYS.GA4_SETTINGS);
+  if (settings) {
+    document.getElementById('ga4-prop-id').value = settings.propId || '';
+    document.getElementById('ga4-client-id').value = settings.clientId || '316091294103-2fqvs71a8quhelcbobtsapssfs5qb30r.apps.googleusercontent.com';
+    document.getElementById('ga4-api-key').value = settings.apiKey || '';
+  } else {
+    document.getElementById('ga4-client-id').value = '316091294103-2fqvs71a8quhelcbobtsapssfs5qb30r.apps.googleusercontent.com';
+  }
+
   if (await DataManager.hasData()) {
     document.getElementById('setup-portal').classList.add('hidden');
     const data = await DataManager.loadData(DataManager.KEYS.JOTFORM);
     renderDashboard(data);
+  } else {
+    document.getElementById('setup-portal').classList.remove('hidden');
+    document.getElementById('loader').classList.add('hidden');
   }
-});
-
-function renderDashboard(data) {
-  const loader = document.getElementById('loader');
-  const root   = document.getElementById('root');
-  
-  // Basic Stats
-  animateCount(document.getElementById('count-total'), data.length);
-  
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const recentData = data.filter(s => new Date((s.created_at || '').replace(' ','T')) > thirtyDaysAgo);
-  animateCount(document.getElementById('count-recent'), recentData.length);
-  
-  const scores = data.map(s => parseInt(getAnswer(s, '50'))).filter(n => !isNaN(n));
-  const avg = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : 0;
-  document.getElementById('val-avg').textContent = avg;
-
-  document.getElementById('val-rate').textContent = '94%';
-
-  // Submissions timeline
-  buildTimelineChart(data);
-  buildScoreChart(data);
-  buildQ14Chart(data);
-  buildYesRateChart(data);
-  buildTable(data);
-
-  loader.classList.add('hidden');
-  root.style.opacity = '1';
-}
-
-window.addEventListener('scroll', () => {
-  const nav = document.getElementById('nav');
-  if (window.scrollY > 20) nav.classList.add('scrolled');
-  else nav.classList.remove('scrolled');
 });
 </script>
 </body>
