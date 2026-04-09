@@ -369,6 +369,7 @@
     <a class="nav-link" href="analytics.html">Analytics</a>
     <a class="nav-link" href="membership.html">Membership Pipeline</a>
     <a class="nav-link" href="revenue.html">Revenue</a>
+    <a class="nav-link" href="traffic.html">Website Traffic</a>
   </div>
   <div class="nav-spacer"></div>
 </nav>
@@ -445,33 +446,24 @@
         <div class="metric-value"><span id="val-avg">0</span><span class="metric-unit" style="font-size:14px;color:#888;"> / 14</span></div>
       </div>
       <div class="metric-card">
-        <p class="metric-label">Website Sessions (30d)</p>
-        <div class="metric-value" id="val-traffic">...</div>
+        <p class="metric-label">Active Email Rate</p>
+        <div class="metric-value" id="val-rate">0%</div>
       </div>
     </div>
 
   <!-- Charts row 1 -->
   <p class="section-heading">Response Analytics</p>
-    <div class="chart-grid-top">
-      <div class="chart-card">
-        <div class="chart-card-header">
-          <div>
-            <div class="chart-card-title">Submission Timeline</div>
-            <div class="chart-card-sub">Daily quiz completions over time</div>
-          </div>
+  <div class="chart-grid-top">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <div class="chart-card-title">Submission Timeline</div>
+          <div class="chart-card-sub">Daily quiz completions over time</div>
         </div>
-        <div class="chart-wrap" style="height: 250px;"><canvas id="chart-timeline"></canvas></div>
       </div>
-      <div class="chart-card" id="container-traffic" style="display: none;">
-        <div class="chart-card-header">
-          <div>
-            <div class="chart-card-title">Website Traffic</div>
-            <div class="chart-card-sub">Sessions vs Engaged (GA4)</div>
-          </div>
-        </div>
-        <div class="chart-wrap" style="height: 250px;"><canvas id="chart-traffic"></canvas></div>
-      </div>
+      <div class="chart-wrap" style="height: 250px;"><canvas id="chart-timeline"></canvas></div>
     </div>
+  </div>
 
   <div class="chart-grid-top">
     <div class="chart-card">
@@ -657,7 +649,7 @@ async function handleUnifiedUpload() {
 }
 
 /* ── DASHBOARD RENDERING ── */
-async function renderDashboard(data) {
+function renderDashboard(data) {
   const loader = document.getElementById('loader');
   const root   = document.getElementById('root');
   
@@ -672,20 +664,7 @@ async function renderDashboard(data) {
   const avg = scores.length ? (scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1) : 0;
   document.getElementById('val-avg').textContent = avg;
 
-  // Fetch GA4
-  try {
-    const ga4Data = await DataManager.getGA4Data();
-    if (ga4Data) {
-      document.getElementById('container-traffic').style.display = 'block';
-      buildTrafficChart(ga4Data);
-      
-      const totalSessions = ga4Data.rows.reduce((acc, row) => acc + parseInt(row.metricValues[0].value), 0);
-      animateCount(document.getElementById('val-traffic'), totalSessions);
-    }
-  } catch (e) {
-    console.error("Traffic fetch skipped/failed", e);
-    document.getElementById('val-traffic').textContent = '—';
-  }
+  document.getElementById('val-rate').textContent = (pct(data.filter(s => getAnswer(s,'36')).length, data.length)) + '%';
 
   buildTimelineChart(data);
   buildScoreChart(data);
@@ -817,37 +796,6 @@ function buildTimelineChart(data) {
       scales: {
         x: { grid: { display: false }, ticks: { color: '#999', maxTicksLimit: 8 } },
         y: { grid: { color: GRID }, ticks: { color: '#999', precision: 0 }, beginAtZero: true }
-      }
-    }
-  });
-}
-
-function buildTrafficChart(ga4) {
-  if (charts.traffic) charts.traffic.destroy();
-  
-  const sortedRows = ga4.rows.sort((a, b) => a.dimensionValues[0].value.localeCompare(b.dimensionValues[0].value));
-  const labels = sortedRows.map(r => {
-    const raw = r.dimensionValues[0].value;
-    return raw.substring(4,6) + '/' + raw.substring(6,8);
-  });
-  const sessions = sortedRows.map(r => parseInt(r.metricValues[0].value));
-  const engaged  = sortedRows.map(r => parseInt(r.metricValues[1].value));
-
-  charts.traffic = new Chart(document.getElementById('chart-traffic'), {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Sessions', data: sessions, borderColor: BLUE, backgroundColor: BLUE + '12', fill: true, tension: 0.3 },
-        { label: 'Engaged', data: engaged, borderColor: GREEN, fill: false, tension: 0.3, borderDash: [4, 4] }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 10 } } } },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: '#999', maxTicksLimit: 6 } },
-        y: { grid: { color: GRID }, ticks: { color: '#999' }, beginAtZero: true }
       }
     }
   });
