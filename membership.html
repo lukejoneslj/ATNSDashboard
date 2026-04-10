@@ -479,10 +479,10 @@
                   <div class="chart-card-title">Member Journey Comparison</div>
                   <div style="display: flex; gap: 4px; align-items: center;">
                     <span style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px;">Window:</span>
-                    <button class="small-tab-btn" onclick="updateRetentionView(2, event)">2M</button>
-                    <button class="small-tab-btn active" onclick="updateRetentionView(3, event)">3M</button>
-                    <button class="small-tab-btn" onclick="updateRetentionView(4, event)">4M</button>
-                    <button class="small-tab-btn" onclick="updateRetentionView(6, event)">6M</button>
+                    <button class="small-tab-btn" data-window="2" onclick="updateRetentionView(2, event)">2M</button>
+                    <button class="small-tab-btn active" data-window="3" onclick="updateRetentionView(3, event)">3M</button>
+                    <button class="small-tab-btn" data-window="4" onclick="updateRetentionView(4, event)">4M</button>
+                    <button class="small-tab-btn" data-window="6" onclick="updateRetentionView(6, event)">6M</button>
                   </div>
                 </div>
                 <div class="chart-card-sub" id="retention-subtitle">Analyzing cohorts...</div>
@@ -790,6 +790,15 @@
       globalTrialList = trialList;
       globalStandardList = standardList;
 
+      // Label each window button with how many members have enough data for that full window
+      // Trial: needs ageMonths >= n-1 (month 1 is free); Standard: needs ageMonths >= n
+      document.querySelectorAll('.small-tab-btn[data-window]').forEach(btn => {
+        const n = parseInt(btn.dataset.window);
+        const tN = trialList.filter(u => u.ageMonths >= (n - 1)).length;
+        const sN = standardList.filter(u => u.ageMonths >= n).length;
+        btn.innerHTML = `${n}M<span style="display:block;font-size:9px;opacity:0.65;line-height:1;margin-top:1px;">${tN}/${sN}</span>`;
+      });
+
       updateRetentionView(3);
       renderTable(trialList.sort((a,b) => b.paidMonths - a.paidMonths).slice(0, 100));
 
@@ -801,7 +810,7 @@
     function updateRetentionView(numMonths, event) {
       if (event) {
         document.querySelectorAll('.small-tab-btn').forEach(b => b.classList.remove('active'));
-        event.target.classList.add('active');
+        event.target.closest('.small-tab-btn').classList.add('active');
       }
 
       const trialSurvival = [];
